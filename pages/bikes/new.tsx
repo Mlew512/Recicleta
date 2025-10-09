@@ -18,7 +18,7 @@ interface BikeForm {
 
 export default function NewBikePage() {
   const router = useRouter()
-  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [currentUser, setCurrentUser] = useState<Record<string, unknown>>(null)
   const [form, setForm] = useState<BikeForm>({
     bike_id: '',
     type: '',
@@ -32,7 +32,7 @@ export default function NewBikePage() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [users, setUsers] = useState<any[]>([])
+  const [users, setUsers] = useState<Array<Record<string, unknown>>>([])
 
   // Fetch current user session
   useEffect(() => {
@@ -72,7 +72,7 @@ export default function NewBikePage() {
       if (dbError) throw dbError
 
       router.push('/') // redirect after adding
-    } catch (err: any) {
+    } catch (err: Record<string, unknown>) {
       setError(err.message)
     } finally {
       setLoading(false)

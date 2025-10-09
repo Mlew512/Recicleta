@@ -9,9 +9,9 @@ export default function RentalsPage() {
   const router = useRouter();
   const selectedBikeFromQuery = router.query.bike as string;
   const { lang, toggleLang } = useLanguage();
-  const [rentals, setRentals] = useState<any[]>([])
-  const [bikes, setBikes] = useState<any[]>([])
-  const [users, setUsers] = useState<any[]>([])
+  const [rentals, setRentals] = useState<Array<Record<string, unknown>>>([])
+  const [bikes, setBikes] = useState<Array<Record<string, unknown>>>([])
+  const [users, setUsers] = useState<Array<Record<string, unknown>>>([])
   const [loading, setLoading] = useState(true)
   const [selectedBike, setSelectedBike] = useState(selectedBikeFromQuery || "")
   const [selectedUser, setSelectedUser] = useState('')
@@ -101,7 +101,7 @@ export default function RentalsPage() {
     mutate("/api/revenue");
   }
 
-  const closeRental = async (rental: any) => {
+  const closeRental = async (rental: Record<string, unknown>) => {
     const confirmed = window.confirm('Are you sure you want to close this rental?')
     if (!confirmed) return
 

@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { useLanguage } from "@/context/LanguageContext";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<null | Record<string, unknown>>(null)
   const { lang, toggleLang } = useLanguage();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
