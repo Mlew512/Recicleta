@@ -24,21 +24,41 @@ export default function RentalsPage() {
   const rentalsPerPage = 10
 
   useEffect(() => {
-    const loadData = async () => {
-      const { data: bikesData } = await supabase.from('bikes').select('id, bike_id, status')
-      const { data: usersData } = await supabase.from('users').select('id, name, dni, email')
-      const { data: rentalsData } = await supabase
-        .from('rentals')
-        .select('*, bikes(bike_id), users(name, dni, email)')
-        .order('id', { ascending: false })
-
-      setBikes(bikesData || [])
-      setUsers(usersData || [])
-      setRentals(rentalsData || [])
-      setLoading(false)
-    }
     loadData()
   }, [])
+
+  const loadData = async () => {
+    setLoading(true)
+    const { data: bikesData } = await supabase.from('bikes').select('id, bike_id, status, type, brand_model')
+    const { data: usersData } = await supabase.from('users').select('id, name, dni, email')
+    const { data: rentalsData } = await supabase
+      .from('rentals')
+      .select('*, bikes(bike_id, type), users(name, dni, email)')
+      .order('id', { ascending: false })
+
+    setBikes(bikesData || [])
+    setUsers(usersData || [])
+    setRentals(rentalsData || [])
+    setLoading(false)
+  }
+
+  // Example rental fee logic for different bike types
+  const getRentalFee = (bikeType: string, rentalType: string) => {
+    // Children's bike: 5 euro every 3 months
+    if (bikeType === "Childrens") {
+      return 5;
+    }
+    if (rentalType === "adult") return 50;
+    if (rentalType === "child") return 30;
+    if (rentalType === "charity") return 0;
+    return 0;
+  };
+
+  const getDeposit = (rentalType: string) => {
+    if (rentalType === "adult") return 50;
+    if (rentalType === "child") return 30;
+    return 0;
+  };
 
   const startRental = async () => {
     if (!selectedBike || !selectedUser || !rentalType) {
@@ -46,23 +66,21 @@ export default function RentalsPage() {
       return
     }
 
-    // compute total_cost (rental_fee + deposit) so revenue can include it immediately
-    const rentalFee = rentalType === "adult" ? 50 : rentalType === "child" ? 30 : 0; // adjust if you have different logic
-    const deposit = rentalType === "adult" ? 50 : rentalType === "child" ? 30 : 0; // adjust if needed
-    const totalCost = (Number(rentalFee) || 0) + (Number(deposit) || 0);
+    const bike = bikes.find(b => b.id === selectedBike);
+    const rentalFee = getRentalFee(bike?.type, rentalType);
+    const deposit = getDeposit(rentalType);
 
-    const { data, error } = await supabase.from("rentals").insert([
+    const { error } = await supabase.from("rentals").insert([
       {
-        transaction_id: `T${Date.now()}`, // ...existing payload...
+        transaction_id: `T${Date.now()}`,
         bike_id: selectedBike,
         user_id: selectedUser || null,
         start_date: new Date().toISOString().split("T")[0],
         status: "Activo",
         rental_fee: rentalFee,
         deposit: deposit,
-        total_cost: totalCost,
+        total_cost: 0, // Will be calculated when closed
         user_type: rentalType || "adult",
-        // ...other fields...
       },
     ]);
 
@@ -71,23 +89,16 @@ export default function RentalsPage() {
       return
     }
 
-    // Mark bike as "In use"
     await supabase.from('bikes').update({ status: 'En uso' }).eq('id', selectedBike)
     setMessage('Rental started successfully!')
 
-    const { data: updatedRentals } = await supabase
-      .from('rentals')
-      .select('*, bikes(bike_id), users(name,dni,email)')
-      .order('id', { ascending: false })
-    setRentals(updatedRentals || [])
+    await loadData();
 
     setSelectedBike('')
     setSelectedUser('')
     setRentalType('')
 
-    // ensure revenue is refreshed on home page
     mutate("/api/revenue");
-    fetchRentals();
   }
 
   const closeRental = async (rental: any) => {
@@ -107,17 +118,19 @@ export default function RentalsPage() {
     let totalCost = 0
     let refund = 0
 
-    if (rental.user_type === 'charity') {
-      // Charity rentals: no cost, no refund, no fees
-      totalCost = 0
-      refund = 0
+    if (rental.bikes?.type === 'Childrens') {
+      // Calculate periods for children's bike
+      const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+      const periods = Math.ceil((months + 1) / 3);
+      totalCost = periods * 5 + damageCost;
+      refund = 0; // No deposit for children's bikes
+    } else if (rental.user_type === 'charity') {
+      totalCost = 0;
+      refund = 0;
     } else {
-      const months = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 30))
-      const costPeriods = Math.ceil(months / 3)
-      const rentalFee = costPeriods * 10
-      const deposit = rental.user_type === 'adult' ? 50 : 30
-      totalCost = rentalFee + damageCost
-      refund = Math.max(deposit - totalCost, 0)
+      // Adult/child rental
+      totalCost = rental.rental_fee + damageCost;
+      refund = Math.max((rental.deposit || 0) - totalCost, 0);
     }
 
     const { error } = await supabase
@@ -146,11 +159,7 @@ export default function RentalsPage() {
       }`
     )
 
-    const { data: updatedRentals } = await supabase
-      .from('rentals')
-      .select('*, bikes(bike_id), users(name,dni,email)')
-      .order('id', { ascending: false })
-    setRentals(updatedRentals || [])
+    await loadData();
   }
 
   if (loading) return <Layout><p>Loading...</p></Layout>
@@ -169,8 +178,13 @@ export default function RentalsPage() {
   const currentRentals = filteredRentals.slice((page - 1) * rentalsPerPage, page * rentalsPerPage)
 
   const filteredBikes = bikes.filter(
-    (b) => b.status === 'Disponible' && b.bike_id.toLowerCase().includes(bikeSearch.toLowerCase())
-  )
+    (b) =>
+      b.status === 'Disponible' &&
+      (
+        b.bike_id.toLowerCase().includes(bikeSearch.toLowerCase()) ||
+        (b.brand_model?.toLowerCase().includes(bikeSearch.toLowerCase()))
+      )
+  );
   const filteredUsers = users.filter(
     (u) =>
       u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
@@ -178,7 +192,6 @@ export default function RentalsPage() {
       u.email.toLowerCase().includes(userSearch.toLowerCase())
   )
 
-  // Replace hardcoded strings:
   const labels = {
     title: lang === "en" ? "Bike Rentals" : "Alquiler de Bicicletas",
     startRental: lang === "en" ? "Start New Rental" : "Iniciar Nuevo Alquiler",
@@ -200,7 +213,12 @@ export default function RentalsPage() {
     page: lang === "en" ? "Page" : "Página",
     of: lang === "en" ? "of" : "de",
     close: lang === "en" ? "Close" : "Cerrar",
-    // ...add more as needed
+    deposit: lang === "en" ? "Deposit (€)" : "Depósito (€)",
+    cost: lang === "en" ? "Cost (€)" : "Costo (€)",
+    damages: lang === "en" ? "Damages (€)" : "Daños (€)",
+    refund: lang === "en" ? "Refund (€)" : "Reembolso (€)",
+    status: lang === "en" ? "Status" : "Estado",
+    actions: lang === "en" ? "Actions" : "Acciones",
   };
 
   return (
@@ -244,7 +262,7 @@ export default function RentalsPage() {
                   <option value="">{labels.selectBike}</option>
                   {filteredBikes.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.bike_id}
+                      {b.bike_id} – {b.brand_model}
                     </option>
                   ))}
                 </select>
@@ -314,16 +332,18 @@ export default function RentalsPage() {
                   <th className="p-2 border">Type</th>
                   <th className="p-2 border">Start</th>
                   <th className="p-2 border">End</th>
-                  <th className="p-2 border">Cost (€)</th>
-                  <th className="p-2 border">Refund (€)</th>
-                  <th className="p-2 border">Status</th>
-                  <th className="p-2 border">Actions</th>
+                  <th className="p-2 border">{labels.deposit}</th>
+                  <th className="p-2 border">{labels.cost}</th>
+                  <th className="p-2 border">{labels.damages}</th>
+                  <th className="p-2 border">{labels.refund}</th>
+                  <th className="p-2 border">{labels.status}</th>
+                  <th className="p-2 border">{labels.actions}</th>
                 </tr>
               </thead>
               <tbody>
                 {currentRentals.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="p-4 text-center text-gray-500">
+                    <td colSpan={12} className="p-4 text-center text-gray-500">
                       {labels.noRentals}
                     </td>
                   </tr>
@@ -345,13 +365,23 @@ export default function RentalsPage() {
                     <td className="p-2 border capitalize">{r.user_type}</td>
                     <td className="p-2 border">{r.start_date}</td>
                     <td className="p-2 border">{r.end_date || '-'}</td>
-                    <td className="p-2 border">{r.total_cost ?? '-'}</td>
+                    {/* Deposit: always show */}
+                    <td className="p-2 border">{r.deposit ?? '-'}</td>
+                    {/* Cost: show when completed, hide while active */}
+                    <td className="p-2 border">
+                      {r.status === "Completado" ? r.total_cost ?? '-' : '-'}
+                    </td>
+                    {/* Damages: show when completed, hide while active */}
+                    <td className="p-2 border">
+                      {r.status === "Completado" ? r.damage_cost ?? '-' : '-'}
+                    </td>
+                    {/* Refund: show when completed, hide while active */}
                     <td className="p-2 border font-semibold text-green-700">
-                      {r.deposit_refund ?? '-'}
+                      {r.status === "Completado" ? r.deposit_refund ?? '-' : '-'}
                     </td>
                     <td className="p-2 border">{r.status}</td>
                     <td className="p-2 border text-center">
-                      {!r.end_date && (
+                      {r.status === "Activo" && (
                         <button
                           onClick={() => closeRental(r)}
                           className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
