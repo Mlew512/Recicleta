@@ -95,7 +95,7 @@ const fetchStatsAndRevenue = async () => {
 
 export default function HomePage() {
   const { lang } = useLanguage();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<null | Record<string, unknown>>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
