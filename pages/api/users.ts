@@ -62,7 +62,7 @@ export default async function handler(req: unknown, res: unknown) {
     }
 
     return res.status(405).json({ error: 'Method not allowed' })
-  } catch (error: any) {
+  } catch (error: Record<string, unknown>) {
     console.error('Error in /api/users:', error)
     return res.status(500).json({ error: error.message || 'Server error' })
   }

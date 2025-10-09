@@ -12,7 +12,7 @@ interface UserForm {
 
 export default function NewUserPage() {
   const router = useRouter()
-  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [currentUser, setCurrentUser] = useState<Record<string, unknown>>(null)
   const [loadingUser, setLoadingUser] = useState(true)
   const [form, setForm] = useState<UserForm>({
     name: '',
@@ -82,7 +82,7 @@ export default function NewUserPage() {
       }
 
       router.push('/users')
-    } catch (err: any) {
+    } catch (err: Record<string, unknown>) {
       setError(err.message)
     } finally {
       setLoadingSubmit(false)

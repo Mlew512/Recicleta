@@ -48,7 +48,7 @@ export default function SignupPage() {
       if (dbError) throw dbError
 
       router.push('/')
-    } catch (err: any) {
+    } catch (err: Record<string, unknown>) {
       setError(err.message)
     } finally {
       setLoading(false)

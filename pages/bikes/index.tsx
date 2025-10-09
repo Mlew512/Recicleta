@@ -44,7 +44,7 @@ export default function BikesPage() {
   const itemsPerPage = 8;
 
   // Edit modal states
-  const [editingBike, setEditingBike] = useState<any>(null);
+  const [editingBike, setEditingBike] = useState<Record<string, unknown>>(null);
   const [editBikeId, setEditBikeId] = useState("");
   const [editType, setEditType] = useState("");
   const [editBrandModel, setEditBrandModel] = useState("");
@@ -114,7 +114,7 @@ export default function BikesPage() {
           .from("bike-photos")
           .getPublicUrl(fileName);
         photoUrl = publicUrlData?.publicUrl || null;
-      } catch (err: any) {
+      } catch (err: Record<string, unknown>) {
         setMessage(
           (lang === "en"
             ? "Error uploading photo: "
@@ -181,7 +181,7 @@ export default function BikesPage() {
   // =====================
   // Edit Bike
   // =====================
-  const openEditModal = (bike: any) => {
+  const openEditModal = (bike: Record<string, unknown>) => {
     setEditingBike(bike);
     setEditBikeId(bike.bike_id);
     setEditType(bike.type);
@@ -208,7 +208,7 @@ export default function BikesPage() {
           .from("bike-photos")
           .getPublicUrl(fileName);
         photoUrl = publicUrlData?.publicUrl || null;
-      } catch (err: any) {
+      } catch (err: Record<string, unknown>) {
         setMessage(
           (lang === "en"
             ? "Error uploading photo: "

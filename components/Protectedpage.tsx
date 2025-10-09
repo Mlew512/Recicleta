@@ -6,7 +6,7 @@ import Layout from './Layout'
 export default function ProtectedPage({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<Record<string, unknown>>(null)
 
   useEffect(() => {
     const checkUser = async () => {

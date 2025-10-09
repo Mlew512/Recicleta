@@ -39,7 +39,7 @@ export default function LoginPage() {
       } else {
         router.push('/')
       }
-    } catch (err: any) {
+    } catch (err: Record<string, unknown>) {
       setError(err.message)
     } finally {
       setLoading(false)

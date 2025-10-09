@@ -101,7 +101,7 @@ export default function RentalsPage() {
     mutate("/api/revenue");
   }
 
-  const closeRental = async (rental: any) => {
+  const closeRental = async (rental: Record<string, unknown>) => {
     const confirmed = window.confirm('Are you sure you want to close this rental?')
     if (!confirmed) return
 
