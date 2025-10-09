@@ -3,9 +3,10 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { useLanguage } from "@/context/LanguageContext";
 import Image from "next/image";
+import type { User } from '@supabase/supabase-js';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<null | Record<string, unknown>>(null)
+  const [user, setUser] = useState<User | null>(null);
   const { lang, toggleLang } = useLanguage();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 

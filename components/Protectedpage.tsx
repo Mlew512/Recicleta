@@ -3,11 +3,12 @@ import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 import Layout from './Layout'
 import Image from 'next/image'
+import type { User } from '@supabase/supabase-js';
 
 export default function ProtectedPage({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState<Record<string, unknown>>(null)
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     const checkUser = async () => {
