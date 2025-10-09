@@ -1,39 +1,69 @@
+// pages/api/users.ts
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { prisma } from '@/lib/prisma'
+import { supabase } from '@/lib/supabaseClient'
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     if (req.method === 'GET') {
-      const q = (req.query.search as string || '').trim()
-      const users = await prisma.user.findMany({
-        where: q ? {
-          OR: [
-            { fullName: { contains: q, mode: 'insensitive' } },
-            { dni: { contains: q, mode: 'insensitive' } },
-            { email: { contains: q, mode: 'insensitive' } },
-          ]
-        } : undefined,
-        orderBy: { fullName: 'asc' }
-      })
-      return res.json(users)
+      // Optional search query: ?search=John
+      const search = req.query.search as string | undefined
+      let query = supabase.from('users').select('*')
+
+      if (search) {
+        query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`)
+      }
+
+      const { data, error } = await query.order('id', { ascending: true })
+      if (error) throw error
+
+      return res.status(200).json(data)
     }
+
     if (req.method === 'POST') {
-      const { fullName, dni, phone, email, address, notes } = req.body || {}
-      if (!fullName || !dni) return res.status(400).json({ error: 'fullName and dni are required' })
-      const user = await prisma.user.create({ data: { fullName, dni, phone, email, address, notes } })
-      return res.status(201).json(user)
+      const { name, dni, email, role } = req.body
+
+      if (!name|| !email) {
+        return res.status(400).json({ error: 'Missing required fields' })
+      }
+
+      const { data, error } = await supabase
+        .from('users')
+        .insert([{ name, dni, email, role }])
+        .select()
+
+      if (error) throw error
+
+      return res.status(201).json(data[0])
     }
+
     if (req.method === 'PUT') {
-      const { id, ...data } = req.body || {}
-      if (!id) return res.status(400).json({ error: 'id required' })
-      const user = await prisma.user.update({ where: { id }, data })
-      return res.json(user)
+      const { id, ...updates } = req.body
+      if (!id) return res.status(400).json({ error: 'User ID is required' })
+
+      const { data, error } = await supabase
+        .from('users')
+        .update(updates)
+        .eq('id', id)
+        .select()
+
+      if (error) throw error
+
+      return res.status(200).json(data[0])
     }
+
     if (req.method === 'DELETE') {
-      const { id } = req.body || {}
-      if (!id) return res.status(400).json({ error: 'id required' })
-      await prisma.user.delete({ where: { id } })
-      return res.json({ ok: true })
+      const { id } = req.body
+      if (!id) return res.status(400).json({ error: 'User ID is required' })
+
+      const { error } = await supabase.from('users').delete().eq('id', id)
+      if (error) throw error
+
+      return res.status(204).end()
     }
-    res.status(405).end()
-  } catch (e:any) { res.status(500).json({ error: e.message }) }
+
+    return res.status(405).json({ error: 'Method not allowed' })
+  } catch (error: any) {
+    console.error('Error in /api/users:', error)
+    return res.status(500).json({ error: error.message || 'Server error' })
+  }
 }
