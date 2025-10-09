@@ -1,5 +1,4 @@
 // pages/api/users.ts
-import type { NextApiRequest, NextApiResponse } from 'next'
 import { supabase } from '@/lib/supabaseClient'
 
 export default async function handler(req: unknown, res: unknown) {

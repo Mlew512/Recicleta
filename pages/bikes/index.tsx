@@ -1,7 +1,7 @@
 // pages/bikes/index.tsx
 import Layout from "@/components/Layout";
 import Image from "next/image";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import useSWR from "swr";
 import { useLanguage } from "@/context/LanguageContext";
