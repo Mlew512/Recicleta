@@ -1,7 +1,7 @@
 // pages/index.tsx
 import { useEffect, useState } from "react";
-import Layout from "@/components/Layout";
 import { supabase } from "@/lib/supabaseClient";
+import Layout from "@/components/Layout";
 import { useLanguage } from "@/context/LanguageContext";
 import useSWR from "swr";
 
@@ -95,7 +95,24 @@ const fetchStatsAndRevenue = async () => {
 
 export default function HomePage() {
   const { lang } = useLanguage();
-  const { data, error, isLoading } = useSWR("/api/revenue", fetchStatsAndRevenue);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user || null);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const { data, error, isLoading } = useSWR(
+    user ? "/api/revenue" : null,
+    fetchStatsAndRevenue
+  );
 
   const labels = {
     revenue: lang === "en" ? "Total Revenue" : "Ingresos Totales",
@@ -112,50 +129,56 @@ export default function HomePage() {
     activeRentals: lang === "en" ? "Active Rentals" : "Alquileres Activos",
   };
 
-  if (error) return <div>Error loading revenue: {error.message}</div>;
-  if (isLoading) return <div>{labels.loading}</div>;
-
   return (
     <Layout>
       <div className="max-w-2xl mx-auto bg-white p-8 rounded shadow mt-8">
-        {/* Counters Section */}
-        <div className="mb-8 space-y-4">
-          <div className="flex justify-between items-center border-b pb-2">
-            <span className="font-semibold">{labels.availableBikes}</span>
-            <span>{data?.availableBikesCount}</span>
-          </div>
-          <div className="flex justify-between items-center border-b pb-2">
-            <span className="font-semibold">{labels.activeRentals}</span>
-            <span>{data?.activeRentalsCount}</span>
-          </div>
-        </div>
-        {/* Revenue Section */}
-        <h1 className="text-2xl font-bold mb-6">{labels.revenue}</h1>
-        <p className="mb-4 text-gray-700">{labels.info}</p>
-        <div className="space-y-4">
-          <div className="flex justify-between items-center border-b pb-2">
-            <span className="font-semibold">{labels.rentals}</span>
-            <span>{data?.rentalRevenue} {labels.euro}</span>
-          </div>
-          <div className="flex justify-between items-center border-b pb-2">
-            <span className="font-semibold">{labels.memberships}</span>
-            <span>{data?.membershipRevenue} {labels.euro}</span>
-          </div>
-          <div className="flex justify-between items-center border-b pb-2">
-            <span className="font-semibold">{labels.sales}</span>
-            <span>{data?.salesRevenue} {labels.euro}</span>
-          </div>
-          <div className="flex justify-between items-center border-b pb-2">
-            <span className="font-semibold">{labels.donations}</span>
-            <span>{data?.donationRevenue} {labels.euro}</span>
-          </div>
-          <div className="flex justify-between items-center pt-4 text-lg font-bold">
-            <span>{labels.revenue}</span>
-            <span>
-              {data?.totalRevenue} {labels.euro}
-            </span>
-          </div>
-        </div>
+        {/* Only show counters and revenue if logged in */}
+        {user && (
+          <>
+            {/* Counters Section */}
+            <div className="mb-8 space-y-4">
+              <div className="flex justify-between items-center border-b pb-2">
+                <span className="font-semibold">{labels.availableBikes}</span>
+                <span>{data?.availableBikesCount ?? "-"}</span>
+              </div>
+              <div className="flex justify-between items-center border-b pb-2">
+                <span className="font-semibold">{labels.activeRentals}</span>
+                <span>{data?.activeRentalsCount ?? "-"}</span>
+              </div>
+            </div>
+            {/* Revenue Section */}
+            <h1 className="text-2xl font-bold mb-6">{labels.revenue}</h1>
+            <p className="mb-4 text-gray-700">{labels.info}</p>
+            {error && <div>Error loading revenue: {error.message}</div>}
+            {isLoading && <div>{labels.loading}</div>}
+            {!isLoading && !error && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="font-semibold">{labels.rentals}</span>
+                  <span>{data?.rentalRevenue} {labels.euro}</span>
+                </div>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="font-semibold">{labels.memberships}</span>
+                  <span>{data?.membershipRevenue} {labels.euro}</span>
+                </div>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="font-semibold">{labels.sales}</span>
+                  <span>{data?.salesRevenue} {labels.euro}</span>
+                </div>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="font-semibold">{labels.donations}</span>
+                  <span>{data?.donationRevenue} {labels.euro}</span>
+                </div>
+                <div className="flex justify-between items-center pt-4 text-lg font-bold">
+                  <span>{labels.revenue}</span>
+                  <span>
+                    {data?.totalRevenue} {labels.euro}
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </Layout>
   );
