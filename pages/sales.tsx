@@ -38,7 +38,11 @@ export default function SalesPage() {
       .from("sales")
       .select("*")
       .order("sale_date", { ascending: false });
-    setSales(data || []);
+    if (error) {
+      console.error("Error fetching sales:", error.message);
+    } else {
+      setSales(data || []);
+    }
     setLoading(false);
   };
 

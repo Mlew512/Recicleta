@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { useLanguage } from "@/context/LanguageContext";
+import Image from "next/image";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<null | Record<string, unknown>>(null)
@@ -9,7 +10,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    const session = supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }) => {
       setUser(data.session?.user || null)
     })
 
@@ -41,7 +42,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <nav className="bg-gray-800 text-white px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Link href="/">
-            <img src="/bike-logo.png" alt="Recicleta" className="h-8 w-8" />
+            <Image src="/bike-logo.png" alt="Recicleta" width={32} height={32} className="h-8 w-8" />
           </Link>
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center space-x-4">

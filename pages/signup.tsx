@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import Layout from '@/components/Layout'
 import { supabase } from '@/lib/supabaseClient'
+import Link from 'next/link'
 
 export default function SignupPage() {
   const router = useRouter()
@@ -34,14 +35,13 @@ export default function SignupPage() {
 
     try {
       // Sign up admin user
-      const { data: authData, error: supError } = await supabase.auth.signUp({
+      await supabase.auth.signUp({
         email,
         password,
         options: {
           data: { name, dni, role: 'admin' },
         },
       })
-      if (supError) throw supError
 
       // Insert into users table
       const { error: dbError } = await supabase.from('users').insert([{ name, dni, email, role: 'admin' }])
@@ -60,7 +60,7 @@ export default function SignupPage() {
   if (!canSignUp)
     return (
       <Layout>
-        <p className="text-center mt-16">Admin already exists. Please <a href="/" className="text-blue-500 underline">log in</a>.</p>
+        <p className="text-center mt-16">Admin already exists. Please <Link href="/" className="text-blue-500 underline">log in</Link>.</p>
       </Layout>
     )
 
