@@ -1,11 +1,12 @@
 // pages/bikes/index.tsx
 import Layout from "@/components/Layout";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import useSWR from "swr";
 import { useLanguage } from "@/context/LanguageContext";
 import { useRouter } from "next/router";
+import dayjs from "dayjs";
 
 const fetcher = async () => {
   const { data, error } = await supabase
@@ -54,6 +55,26 @@ export default function BikesPage() {
   const [editNotes, setEditNotes] = useState("");
   const [editPhoto, setEditPhoto] = useState<File | null>(null);
   const [editUploading, setEditUploading] = useState(false);
+
+  // Auto-populate bikeId with next available (yy000 format)
+  // This effect runs when bikes data changes
+  useEffect(() => {
+    if (!bikes) return;
+    const year = dayjs().format("YY");
+    // Filter bike_ids for current year
+    const yearBikes = bikes
+      .map((b: Record<string, unknown>) => String(b.bike_id))
+      .filter(id => id.startsWith(year));
+    let nextNumber = 1;
+    if (yearBikes.length > 0) {
+      const maxNum = Math.max(
+        ...yearBikes.map(id => parseInt(id.slice(2), 10)).filter(n => !isNaN(n))
+      );
+      nextNumber = maxNum + 1;
+    }
+    const nextId = `${year}${String(nextNumber).padStart(3, "0")}`;
+    setBikeId(nextId);
+  }, [bikes]);
 
   // Early returns
   if (error)
@@ -411,7 +432,6 @@ export default function BikesPage() {
             ) : (
               paginatedBikes.map((bike) => (
                 <div key={bike.id} className="bg-white rounded shadow p-4 flex flex-col">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <Image
                     src={bike.photo_url || "/bikeplaceholder.png"}
                     alt={bike.brand_model || bike.bike_id}

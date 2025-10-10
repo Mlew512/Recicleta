@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { supabase } from '@/lib/supabaseClient'
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
 import { useLanguage } from "@/context/LanguageContext";
 import Image from "next/image";
-import type { User } from '@supabase/supabase-js';
+import type { User } from "@supabase/supabase-js";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -12,22 +12,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user || null)
-    })
+      setUser(data.session?.user || null);
+    });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null)
-    })
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user || null);
+      }
+    );
 
     return () => {
-      listener.subscription.unsubscribe()
-    }
-  }, [])
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
-  }
+    await supabase.auth.signOut();
+    setUser(null);
+  };
 
   const navLinks = [
     { href: "/bikes", label: lang === "en" ? "Bikes" : "Bicicletas" },
@@ -42,22 +44,35 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Nav Bar */}
       <nav className="bg-gray-800 text-white px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Link href="/">
-            <Image src="/bike-logo.png" alt="Recicleta" width={32} height={32} className="h-8 w-8" />
+          <Link href="/" className="flex items-center">
+            <Image
+              src="/bike-logo.png"
+              alt="Recicleta"
+              width={32}
+              height={32}
+              className="h-8 w-8"
+            />
           </Link>
+
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center space-x-4">
             {user ? (
-              navLinks.map(link => (
-                <Link key={link.href} href={link.href} className="hover:underline">{link.label}</Link>
+              navLinks.map((link) => (
+                <Link key={link.href} href={link.href} legacyBehavior>
+                  <a className="hover:underline">{link.label}</a>
+                </Link>
               ))
             ) : (
               <>
-                <Link href="/register" className="hover:underline">
-                  {lang === "en" ? "Register" : "Registrar"}
+                <Link href="/register" legacyBehavior>
+                  <a className="hover:underline">
+                    {lang === "en" ? "Register" : "Registrar"}
+                  </a>
                 </Link>
-                <Link href="/login" className="hover:underline">
-                  {lang === "en" ? "Login" : "Ingresar"}
+                <Link href="/login" legacyBehavior>
+                  <a className="hover:underline">
+                    {lang === "en" ? "Login" : "Ingresar"}
+                  </a>
                 </Link>
               </>
             )}
@@ -99,31 +114,33 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {mobileMenuOpen && (
         <div className="md:hidden bg-gray-900 text-white px-4 py-2">
           {user ? (
-            navLinks.map(link => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="block py-2 border-b border-gray-700 hover:bg-gray-800"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {link.label}
+            navLinks.map((link) => (
+              <Link key={link.href} href={link.href} legacyBehavior>
+                <a
+                  className="block py-2 border-b border-gray-700 hover:bg-gray-800"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {link.label}
+                </a>
               </Link>
             ))
           ) : (
             <>
-              <Link
-                href="/register"
-                className="block py-2 border-b border-gray-700 hover:bg-gray-800"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {lang === "en" ? "Register" : "Registrar"}
+              <Link href="/register" legacyBehavior>
+                <a
+                  className="block py-2 border-b border-gray-700 hover:bg-gray-800"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {lang === "en" ? "Register" : "Registrar"}
+                </a>
               </Link>
-              <Link
-                href="/login"
-                className="block py-2 border-b border-gray-700 hover:bg-gray-800"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {lang === "en" ? "Login" : "Ingresar"}
+              <Link href="/login" legacyBehavior>
+                <a
+                  className="block py-2 border-b border-gray-700 hover:bg-gray-800"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {lang === "en" ? "Login" : "Ingresar"}
+                </a>
               </Link>
             </>
           )}
@@ -132,5 +149,5 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       <main className="p-6">{children}</main>
     </div>
-  )
+  );
 }

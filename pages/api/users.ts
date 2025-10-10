@@ -1,7 +1,8 @@
 // pages/api/users.ts
 import { supabase } from '@/lib/supabaseClient'
+import type { NextApiRequest, NextApiResponse } from 'next'
 
-export default async function handler(req: unknown, res: unknown) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     if (req.method === 'GET') {
       // Optional search query: ?search=John

@@ -34,15 +34,11 @@ export default function SalesPage() {
 
   const fetchSales = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("sales")
-      .select("*")
-      .order("sale_date", { ascending: false });
-    if (error) {
-      console.error("Error fetching sales:", error.message);
-    } else {
-      setSales(data || []);
-    }
+    const { data } = await supabase.from("sales").select("*");
+    // if you want to log errors:
+    // const { data, error } = await supabase.from("sales").select("*");
+    // if (error) console.error(error);
+    setSales(data || []);
     setLoading(false);
   };
 

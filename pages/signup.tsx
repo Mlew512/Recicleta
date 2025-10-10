@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import Layout from '@/components/Layout'
 import { supabase } from '@/lib/supabaseClient'
 import Link from 'next/link'
+import React from "react";
 
 export default function SignupPage() {
   const router = useRouter()
@@ -78,6 +79,9 @@ export default function SignupPage() {
             {loading ? 'Creating...' : 'Create Admin'}
           </button>
         </form>
+        <p className="mt-4 text-center">
+          Already have an account? <Link href="/" className="text-blue-500 underline">Log in</Link>
+        </p>
       </div>
     </Layout>
   )

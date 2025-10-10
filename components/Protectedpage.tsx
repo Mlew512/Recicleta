@@ -27,13 +27,7 @@ export default function ProtectedPage({ children }: { children: React.ReactNode 
   if (!user) return (
     <Layout>
       <div className="text-center mt-16">
-        <Image
-          src="/bike-logo.png"
-          alt="Bike Logo"
-          width={96}
-          height={96}
-          className="mx-auto"
-        />
+        <Image src="/bike-logo.png" alt="Bike Logo" width={96} height={96} className="mx-auto" />
       </div>
     </Layout>
   )

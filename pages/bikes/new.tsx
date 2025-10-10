@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import Layout from '@/components/Layout'
 import { supabase } from '@/lib/supabaseClient'
+import dayjs from "dayjs";
 
 interface BikeForm {
   bike_id: string
@@ -33,6 +34,7 @@ export default function NewBikePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [users, setUsers] = useState<Array<Record<string, unknown>>>([])
+  const [bikes, setBikes] = useState<Array<Record<string, unknown>>>([]);
 
   // Fetch current user session
   useEffect(() => {
@@ -56,6 +58,40 @@ export default function NewBikePage() {
     }
     fetchUsers()
   }, [])
+
+  // Fetch all bikes to determine next available ID
+  useEffect(() => {
+    const fetchBikes = async () => {
+      const { data, error } = await supabase.from('bikes').select('bike_id');
+      if (error) console.error(error);
+      else setBikes(data || []);
+    };
+    fetchBikes();
+  }, []);
+
+  // Auto-populate bike_id with next available (yy000 format)
+  useEffect(() => {
+    if (bikes.length === 0) {
+      // If no bikes, start with current year + '001'
+      const year = dayjs().format("YY");
+      setForm(prev => ({ ...prev, bike_id: `${year}001` }));
+      return;
+    }
+    // Find max bike_id for current year
+    const year = dayjs().format("YY");
+    const yearBikes = bikes
+      .map(b => String(b.bike_id))
+      .filter(id => id.startsWith(year));
+    let nextNumber = 1;
+    if (yearBikes.length > 0) {
+      const maxNum = Math.max(
+        ...yearBikes.map(id => parseInt(id.slice(2), 10)).filter(n => !isNaN(n))
+      );
+      nextNumber = maxNum + 1;
+    }
+    const nextId = `${year}${String(nextNumber).padStart(3, "0")}`;
+    setForm(prev => ({ ...prev, bike_id: nextId }));
+  }, [bikes]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
