@@ -82,7 +82,7 @@ export default function NewUserPage() {
       }
 
       router.push('/users')
-    } catch (err: Record<string, unknown>) {
+    } catch (err: unknown) {
       setError(err.message)
     } finally {
       setLoadingSubmit(false)

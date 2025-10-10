@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import { useLanguage } from "@/context/LanguageContext";
 import useSWR from "swr";
+import { User } from "@supabase/supabase-js";
 
 const fetchStatsAndRevenue = async () => {
   try {
@@ -95,7 +96,7 @@ const fetchStatsAndRevenue = async () => {
 
 export default function HomePage() {
   const { lang } = useLanguage();
-  const [user, setUser] = useState<null | Record<string, unknown>>(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {

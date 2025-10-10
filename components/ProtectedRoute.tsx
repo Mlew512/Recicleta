@@ -2,6 +2,9 @@ import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useLanguage } from "@/context/LanguageContext";
+import Link from "next/link";
+import Image from "next/image";
+import type { User } from "@supabase/supabase-js";
 
 function SplashPage() {
   const { lang, toggleLang } = useLanguage();
@@ -21,18 +24,18 @@ function SplashPage() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-green-50 text-center p-8">
-      <img src="/bike-logo.png" alt="Recicleta" width={96} height={96} className="mx-auto mb-6" />
+      <Image src="/bike-logo.png" alt="Recicleta" width={96} height={96} className="mx-auto mb-6" />
       <h1 className="text-3xl font-bold mb-4">
         {lang === "en" ? "Welcome to Recicleta!" : "¡Bienvenido a Recicleta!"}
       </h1>
       <p className="text-lg max-w-xl mb-6">{mission[lang]}</p>
       <div className="space-x-4 mb-4">
-        <a href="/login" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+        <Link href="/login" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
           {lang === "en" ? "Login" : "Ingresar"}
-        </a>
-        <a href="/register" className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">
+        </Link>
+        <Link href="/register" className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">
           {lang === "en" ? "Register" : "Registrar"}
-        </a>
+        </Link>
       </div>
       <button
         onClick={toggleLang}
@@ -48,7 +51,7 @@ function SplashPage() {
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {

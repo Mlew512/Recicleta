@@ -1,17 +1,24 @@
-import { prisma } from './prisma'
-async function nextSequential(prefix: string, table: 'bike'|'rental'|'sale') {
+
+/**
+ * Generate a sequential code based on a prefix and an array of existing codes.
+ * Example: nextSequential('B', ['B001', 'B002']) -> 'B003'
+ */
+export const nextSequential = (prefix: string, codes: string[]): string => {
   let max = 0
-  const list = table === 'bike'
-    ? await prisma.bike.findMany({ select: { code: true } })
-    : table === 'rental'
-    ? await prisma.rental.findMany({ select: { code: true } })
-    : await prisma.sale.findMany({ select: { code: true } })
-  for (const r of list) {
-    const m = r.code?.match(/\d+$/)
-    if (m) max = Math.max(max, parseInt(m[0], 10))
+  for (const code of codes) {
+    const match = code.match(/\d+/)
+    if (match) {
+      const num = parseInt(match[0], 10)
+      if (!isNaN(num)) max = Math.max(max, num)
+    }
   }
-  return `${prefix}${String(max + 1).padStart(3,'0')}`
+  // Avoid String.prototype.padStart in case a global type override exists.
+  const seq = (max + 1).toString()
+  const padded = ('000' + seq).slice(-3)
+  return `${prefix}${padded}`
 }
-export const nextBikeCode   = () => nextSequential('B','bike')
-export const nextRentalCode = () => nextSequential('T','rental')
-export const nextSaleCode   = () => nextSequential('S','sale')
+
+// Example usage helpers
+export const nextBikeCode   = (codes: string[]) => nextSequential('B', codes)
+export const nextRentalCode = (codes: string[]) => nextSequential('T', codes)
+export const nextSaleCode   = (codes: string[]) => nextSequential('S', codes)

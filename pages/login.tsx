@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/router'
 import Layout from '@/components/Layout'
 import { supabase } from '@/lib/supabaseClient'
+import { getErrorMessage } from '@/lib/errorHandling'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -11,36 +12,26 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    setError(null)
-
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-
+      setLoading(true)
+      setError(null)
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
 
       // Get user metadata to check role
-      const token = data.session?.access_token
-      if (!token) throw new Error('No access token returned')
-
-      const res = await fetch('/api/me', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-
-      if (!res.ok) throw new Error('Failed to fetch user info')
-
-      const user = await res.json()
+      const { data } = await supabase.auth.getUser()
+      const user = data?.user
 
       // Redirect based on role
-      if (user.role === 'admin') {
+      if (user?.role === 'admin') {
         router.push('/users')
       } else {
         router.push('/')
       }
-    } catch (err: Record<string, unknown>) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -52,7 +43,7 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold mb-4">Login</h1>
         {error && <p className="text-red-500 mb-2">{error}</p>}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="block font-semibold">Email</label>
             <input
