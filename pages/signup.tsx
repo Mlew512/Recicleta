@@ -5,6 +5,16 @@ import { supabase } from '@/lib/supabaseClient'
 import Link from 'next/link'
 import React from "react";
 
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object" && "message" in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return "An unknown error occurred";
+}
+
 export default function SignupPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -50,7 +60,7 @@ export default function SignupPage() {
 
       router.push('/')
     } catch (err: unknown) {
-      setError(err.message)
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false)
     }

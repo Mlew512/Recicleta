@@ -50,6 +50,7 @@ export default function SalesPage() {
     buyerName: lang === "en" ? "Buyer Name (optional)" : "Nombre del comprador (opcional)",
     buyerEmail: lang === "en" ? "Buyer Email (optional)" : "Email del comprador (opcional)",
     donation: lang === "en" ? "Donation" : "Donación",
+    sale: lang === "en" ? "Sale" : "Venta",
     addSale: lang === "en" ? "Add Sale/Donation" : "Agregar Venta/Donación",
     loading: lang === "en" ? "Loading..." : "Cargando...",
     noSales: lang === "en" ? "No sales or donations found." : "No se encontraron ventas o donaciones.",
@@ -183,7 +184,7 @@ export default function SalesPage() {
               <tbody>
                 {sales.map((s) => (
                   <tr key={s.id} className="hover:bg-gray-100">
-                    <td className="border p-2">{s.item === labels.donation ? labels.donation : labels.sales}</td>
+                    <td className="border p-2">{s.item === labels.donation ? labels.donation : labels.sale}</td>
                     <td className="border p-2">{s.item}</td>
                     <td className="border p-2">{s.amount}</td>
                     <td className="border p-2">{s.quantity}</td>
