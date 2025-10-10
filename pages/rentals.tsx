@@ -1,21 +1,27 @@
 import Layout from '@/components/Layout'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { Database } from '@/lib/database.types'
 import { useLanguage } from "@/context/LanguageContext";
 import { mutate } from "swr";
 import { useRouter } from "next/router";
+
+type Rental = Database['public']['Tables']['rentals']['Row']
+type Bike = Database['public']['Tables']['bikes']['Row']
+type User = Database['public']['Tables']['users']['Row']
+type RentalType = 'adult' | 'child' | 'charity' | ''
 
 export default function RentalsPage() {
   const router = useRouter();
   const selectedBikeFromQuery = router.query.bike as string;
   const { lang, toggleLang } = useLanguage();
-  const [rentals, setRentals] = useState<Array<Record<string, unknown>>>([])
-  const [bikes, setBikes] = useState<Array<Record<string, unknown>>>([])
-  const [users, setUsers] = useState<Array<Record<string, unknown>>>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedBike, setSelectedBike] = useState(selectedBikeFromQuery || "")
-  const [selectedUser, setSelectedUser] = useState('')
-  const [rentalType, setRentalType] = useState<'adult' | 'child' | 'charity' | ''>('')
+  const [rentals, setRentals] = useState<Rental[]>([])
+  const [bikes, setBikes] = useState<Bike[]>([])
+  const [users, setUsers] = useState<User[]>([])
+  const [loading, setLoading] = useState<boolean>(false);
+  const [selectedBike, setSelectedBike] = useState<string>(selectedBikeFromQuery || "")
+  const [selectedUser, setSelectedUser] = useState<string>('')
+  const [rentalType, setRentalType] = useState<RentalType>('')
   const [search, setSearch] = useState('')
   const [bikeSearch, setBikeSearch] = useState('')
   const [userSearch, setUserSearch] = useState('')
@@ -23,38 +29,51 @@ export default function RentalsPage() {
   const [page, setPage] = useState(1)
   const rentalsPerPage = 10
 
+  // Use useCallback to memoize loadData
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [{ data: bikesData }, { data: usersData }, { data: rentalsData }] = await Promise.all([
+        supabase.from('bikes').select('*'),
+        supabase.from('users').select('*'),
+        supabase.from('rentals').select(`
+          *,
+          bikes (
+            id, bike_id, type, status, brand_model, size, condition
+          ),
+          users (
+            id, name, email, dni
+          )
+        `)
+      ]);
+
+      if (bikesData) setBikes(bikesData);
+      if (usersData) setUsers(usersData);
+      if (rentalsData) setRentals(rentalsData);
+    } catch (err: unknown) {
+      console.error('Error loading data:', err);
+      setMessage('Error loading data');
+    } finally {
+      setLoading(false);
+    }
+  }, []); // No dependencies since all setState functions are stable
+
+  // Now useEffect won't complain about the dependency
   useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
-    setLoading(true)
-    const { data: bikesData } = await supabase.from('bikes').select('id, bike_id, status, type, brand_model')
-    const { data: usersData } = await supabase.from('users').select('id, name, dni, email')
-    const { data: rentalsData } = await supabase
-      .from('rentals')
-      .select('*, bikes(bike_id, type), users(name, dni, email)')
-      .order('id', { ascending: false })
-
-    setBikes(bikesData || [])
-    setUsers(usersData || [])
-    setRentals(rentalsData || [])
-    setLoading(false)
-  }
+    loadData();
+  }, [loadData]);
 
   // Example rental fee logic for different bike types
-  const getRentalFee = (bikeType: string, rentalType: string) => {
-    // Children's bike: 5 euro every 3 months
-    if (bikeType === "Childrens") {
-      return 5;
-    }
-    if (rentalType === "adult") return 50;
-    if (rentalType === "child") return 30;
+  const getRentalFee = (bikeType: string | undefined, rentalType: RentalType): number => {
+    // For charity rentals
     if (rentalType === "charity") return 0;
+    
+    // Initial rental period is free (covered by deposit)
+    // This will be adjusted when the rental is closed based on duration
     return 0;
   };
 
-  const getDeposit = (rentalType: string) => {
+  const getDeposit = (rentalType: RentalType): number => {
     if (rentalType === "adult") return 50;
     if (rentalType === "child") return 30;
     return 0;
@@ -66,9 +85,8 @@ export default function RentalsPage() {
       return
     }
 
-    const bike = bikes.find(b => b.id === selectedBike);
-    const rentalFee = getRentalFee(bike?.type, rentalType);
-    const deposit = getDeposit(rentalType);
+    const deposit = rentalType === "adult" ? 50 : 
+                   rentalType === "child" ? 30 : 0;
 
     const { error } = await supabase.from("rentals").insert([
       {
@@ -77,7 +95,7 @@ export default function RentalsPage() {
         user_id: selectedUser || null,
         start_date: new Date().toISOString().split("T")[0],
         status: "Activo",
-        rental_fee: rentalFee,
+        rental_fee: 0, // Actual fee will be calculated on close
         deposit: deposit,
         total_cost: 0, // Will be calculated when closed
         user_type: rentalType || "adult",
@@ -101,7 +119,7 @@ export default function RentalsPage() {
     mutate("/api/revenue");
   }
 
-  const closeRental = async (rental: Record<string, unknown>) => {
+  const closeRental = async (rental: Rental) => {
     const confirmed = window.confirm('Are you sure you want to close this rental?')
     if (!confirmed) return
 
@@ -112,42 +130,53 @@ export default function RentalsPage() {
       return
     }
 
-    const start = new Date(rental.start_date)
-    const end = new Date()
+    const start = new Date(rental.start_date);
+    const end = new Date();
 
-    let totalCost = 0
-    let refund = 0
+    let totalCost = 0;
+    let refund = 0;
 
-    if (rental.bikes?.type === 'Childrens') {
-      // Calculate periods for children's bike
-      const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-      const periods = Math.ceil((months + 1) / 3);
-      totalCost = periods * 5 + damageCost;
-      refund = 0; // No deposit for children's bikes
+    // Calculate number of days between start and end dates
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / msPerDay));
+
+    // Calculate number of 3-month periods (minimum 1)
+    const periods = Math.max(1, Math.ceil(days / 90)); // 90 days = ~3 months
+
+    const isChildRental =
+      rental.user_type === 'child' ||
+      rental.bikes?.type?.toLowerCase() === 'childrens';
+
+    if (isChildRental) {
+      // Children's bikes: 5 euro per 3-month period, 30 euro deposit
+      totalCost = periods * 5;
+      refund = Math.max(30 - totalCost - damageCost, 0);
     } else if (rental.user_type === 'charity') {
       totalCost = 0;
       refund = 0;
     } else {
-      // Adult/child rental
-      totalCost = rental.rental_fee + damageCost;
-      refund = Math.max((rental.deposit || 0) - totalCost, 0);
+      // Adult bikes: 10 euro per 3-month period, 50 euro deposit
+      totalCost = periods * 10 + damageCost;
+      refund = Math.max(50 - totalCost, 0);
     }
 
-    const { error } = await supabase
+    // Add damage cost if any
+    if (damageCost > 0) {
+      totalCost += damageCost;
+      refund = Math.max(refund - damageCost, 0);
+    }
+
+    const { error: updateError } = await supabase
       .from('rentals')
       .update({
-        end_date: end.toISOString().split('T')[0],
+        end_date: end.toISOString(),
         total_cost: totalCost,
-        damage_cost: damageCost,
         deposit_refund: refund,
-        status: 'Completado',
+        status: 'Completado'
       })
-      .eq('id', rental.id)
+      .eq('id', rental.id);
 
-    if (error) {
-      setMessage('Error closing rental: ' + error.message)
-      return
-    }
+    if (updateError) throw updateError;
 
     await supabase.from('bikes').update({ status: 'Disponible' }).eq('id', rental.bike_id)
 
@@ -162,16 +191,14 @@ export default function RentalsPage() {
     await loadData();
   }
 
-  if (loading) return <Layout><p>Loading...</p></Layout>
-
-  const filteredRentals = rentals.filter((r) => {
-    const q = search.toLowerCase()
+  const filteredRentals = rentals.filter((r: Rental) => {
+    const q = search.toLowerCase();
     return (
       r.bikes?.bike_id?.toLowerCase().includes(q) ||
       r.users?.name?.toLowerCase().includes(q) ||
       r.users?.dni?.toLowerCase().includes(q) ||
       r.users?.email?.toLowerCase().includes(q)
-    )
+    );
   })
 
   const totalPages = Math.ceil(filteredRentals.length / rentalsPerPage)
@@ -295,7 +322,7 @@ export default function RentalsPage() {
               <select
                 className="border rounded px-3 py-2 w-full"
                 value={rentalType}
-                onChange={(e) => setRentalType(e.target.value as 'adult' | 'child' | 'charity')}
+                onChange={(e) => setRentalType(e.target.value as RentalType)}
               >
                 <option value="">{labels.selectType}</option>
                 <option value="adult">{labels.adult}</option>

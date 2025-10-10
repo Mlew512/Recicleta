@@ -3,6 +3,17 @@ import { useRouter } from 'next/router'
 import Layout from '@/components/Layout'
 import { supabase } from '@/lib/supabaseClient'
 import Link from 'next/link'
+import React from "react";
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object" && "message" in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return "An unknown error occurred";
+}
 
 export default function SignupPage() {
   const router = useRouter()
@@ -48,8 +59,8 @@ export default function SignupPage() {
       if (dbError) throw dbError
 
       router.push('/')
-    } catch (err: Record<string, unknown>) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false)
     }
@@ -78,6 +89,9 @@ export default function SignupPage() {
             {loading ? 'Creating...' : 'Create Admin'}
           </button>
         </form>
+        <p className="mt-4 text-center">
+          Already have an account? <Link href="/" className="text-blue-500 underline">Log in</Link>
+        </p>
       </div>
     </Layout>
   )

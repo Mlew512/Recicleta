@@ -1,11 +1,13 @@
 // pages/bikes/index.tsx
 import Layout from "@/components/Layout";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import useSWR from "swr";
 import { useLanguage } from "@/context/LanguageContext";
 import { useRouter } from "next/router";
+import dayjs from "dayjs";
+import { getErrorMessage } from '@/lib/errorHandling';
 
 const fetcher = async () => {
   const { data, error } = await supabase
@@ -15,6 +17,17 @@ const fetcher = async () => {
   if (error) throw error;
   return data;
 };
+
+// Update the Bike interface to include an index signature
+interface Bike {
+  bike_id: string;
+  type: string;
+  brand_model: string;
+  size: string;
+  condition: string;
+  status: string;
+  [key: string]: unknown;  // Add index signature
+}
 
 export default function BikesPage() {
   const { lang } = useLanguage();
@@ -44,7 +57,7 @@ export default function BikesPage() {
   const itemsPerPage = 8;
 
   // Edit modal states
-  const [editingBike, setEditingBike] = useState<Record<string, unknown>>(null);
+  const [editingBike, setEditingBike] = useState<Bike | null>(null);
   const [editBikeId, setEditBikeId] = useState("");
   const [editType, setEditType] = useState("");
   const [editBrandModel, setEditBrandModel] = useState("");
@@ -54,6 +67,27 @@ export default function BikesPage() {
   const [editNotes, setEditNotes] = useState("");
   const [editPhoto, setEditPhoto] = useState<File | null>(null);
   const [editUploading, setEditUploading] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  // Auto-populate bikeId with next available (yy000 format)
+  // This effect runs when bikes data changes
+  useEffect(() => {
+    if (!bikes) return;
+    const year = dayjs().format("YY");
+    // Filter bike_ids for current year
+    const yearBikes = bikes
+      .map((b: Record<string, unknown>) => String(b.bike_id))
+      .filter(id => id.startsWith(year));
+    let nextNumber = 1;
+    if (yearBikes.length > 0) {
+      const maxNum = Math.max(
+        ...yearBikes.map(id => parseInt(id.slice(2), 10)).filter(n => !isNaN(n))
+      );
+      nextNumber = maxNum + 1;
+    }
+    const nextId = `${year}${String(nextNumber).padStart(3, "0")}`;
+    setBikeId(nextId);
+  }, [bikes]);
 
   // Early returns
   if (error)
@@ -110,15 +144,25 @@ export default function BikesPage() {
           .from("bike-photos")
           .upload(fileName, photo);
         if (uploadError) throw uploadError;
-        const { data: publicUrlData } = supabase.storage
-          .from("bike-photos")
-          .getPublicUrl(fileName);
-        photoUrl = publicUrlData?.publicUrl || null;
-      } catch (err: Record<string, unknown>) {
+        try {
+          const { data: publicUrlData } = await supabase.storage
+            .from("bike-photos")
+            .getPublicUrl(fileName);
+          photoUrl = publicUrlData?.publicUrl || null;
+        } catch (err: unknown) {
+          setMessage(
+            (lang === "en"
+              ? "Error uploading photo: "
+              : "Error al subir la foto: ") + (err instanceof Error ? err.message : String(err))
+          );
+          console.error("Error uploading photo:", err);
+          return;
+        }
+      } catch (err: unknown) {  // Changed from Record<string, unknown> to unknown
         setMessage(
           (lang === "en"
             ? "Error uploading photo: "
-            : "Error subiendo foto: ") + err.message
+            : "Error subiendo foto: ") + getErrorMessage(err)
         );
         return;
       } finally {
@@ -181,7 +225,7 @@ export default function BikesPage() {
   // =====================
   // Edit Bike
   // =====================
-  const openEditModal = (bike: Record<string, unknown>) => {
+  const openEditModal = (bike: Bike) => {
     setEditingBike(bike);
     setEditBikeId(bike.bike_id);
     setEditType(bike.type);
@@ -189,8 +233,7 @@ export default function BikesPage() {
     setEditSize(bike.size);
     setEditCondition(bike.condition);
     setEditStatus(bike.status);
-    setEditNotes(bike.notes || "");
-    setEditPhoto(null);
+    setShowEditModal(true);
   };
 
   const saveEditBike = async () => {
@@ -204,15 +247,25 @@ export default function BikesPage() {
           .from("bike-photos")
           .upload(fileName, editPhoto);
         if (uploadError) throw uploadError;
-        const { data: publicUrlData } = supabase.storage
-          .from("bike-photos")
-          .getPublicUrl(fileName);
-        photoUrl = publicUrlData?.publicUrl || null;
-      } catch (err: Record<string, unknown>) {
+        try {
+          const { data: publicUrlData } = await supabase.storage
+            .from("bike-photos")
+            .getPublicUrl(fileName);
+          photoUrl = publicUrlData?.publicUrl || null;
+        } catch (err: unknown) {
+          setMessage(
+            (lang === "en"
+              ? "Error uploading photo: "
+              : "Error al subir la foto: ") + (err instanceof Error ? err.message : String(err))
+          );
+          console.error("Error uploading photo:", err);
+          return;
+        }
+      } catch (err: unknown) {
         setMessage(
           (lang === "en"
             ? "Error uploading photo: "
-            : "Error subiendo foto: ") + err.message
+            : "Error subiendo foto: ") + getErrorMessage(err)
         );
         return;
       } finally {
@@ -243,6 +296,7 @@ export default function BikesPage() {
     else {
       setMessage(lang === "en" ? "Bike updated!" : "Bicicleta actualizada!");
       setEditingBike(null);
+      setShowEditModal(false);
       mutate();
     }
   };
@@ -411,7 +465,6 @@ export default function BikesPage() {
             ) : (
               paginatedBikes.map((bike) => (
                 <div key={bike.id} className="bg-white rounded shadow p-4 flex flex-col">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <Image
                     src={bike.photo_url || "/bikeplaceholder.png"}
                     alt={bike.brand_model || bike.bike_id}
@@ -489,7 +542,7 @@ export default function BikesPage() {
           )}
 
           {/* Edit Modal */}
-          {editingBike && (
+          {showEditModal && editingBike && (
             <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
               <div className="bg-white rounded-lg p-6 w-full max-w-md relative">
                 <h2 className="text-xl font-semibold mb-4">

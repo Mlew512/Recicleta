@@ -1,7 +1,8 @@
 // pages/api/users.ts
 import { supabase } from '@/lib/supabaseClient'
+import type { NextApiRequest, NextApiResponse } from 'next'
 
-export default async function handler(req: unknown, res: unknown) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     if (req.method === 'GET') {
       // Optional search query: ?search=John
@@ -61,8 +62,19 @@ export default async function handler(req: unknown, res: unknown) {
     }
 
     return res.status(405).json({ error: 'Method not allowed' })
-  } catch (error: Record<string, unknown>) {
-    console.error('Error in /api/users:', error)
-    return res.status(500).json({ error: error.message || 'Server error' })
+  } catch (error: unknown) {
+    // Safely log with type checking
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'message' in error &&
+      typeof (error as { message?: unknown }).message === 'string'
+    ) {
+      console.error(`Error in /api/users: ${(error as { message: string }).message}`);
+    } else {
+      console.error(`Error in /api/users: Unknown error`);
+    }
+
+    return res.status(500).json({ error: 'Server error' });
   }
 }

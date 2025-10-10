@@ -18,7 +18,12 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [newUser, setNewUser] = useState({ name: '', dni: '', email: ''})
+  const [newUser, setNewUser] = useState<{ name: string; dni: string; email: string; role: string }>({
+    name: '',
+    dni: '',
+    email: '',
+    role: 'user'
+  })
 
   useEffect(() => {
     fetchUsers()
