@@ -130,6 +130,15 @@ export default function BikesPage() {
   // Add Bike
   // =====================
   const addBike = async () => {
+    // Validation: require brandModel, type, and size
+    if (!brandModel || !type || !size) {
+      setMessage(
+        lang === "en"
+          ? "Brand/Model, Type, and Size are required."
+          : "Marca/Modelo, Tipo y Tamaño son obligatorios."
+      );
+      return;
+    }
     if (!bikeId) {
       setMessage(lang === "en" ? "Enter bike ID" : "Ingrese ID de bicicleta");
       return;

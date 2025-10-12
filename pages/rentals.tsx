@@ -201,8 +201,18 @@ export default function RentalsPage() {
     );
   })
 
-  const totalPages = Math.ceil(filteredRentals.length / rentalsPerPage)
-  const currentRentals = filteredRentals.slice((page - 1) * rentalsPerPage, page * rentalsPerPage)
+  // Sort: active first, then by start_date descending (newest first)
+  const sortedRentals = [...filteredRentals].sort((a, b) => {
+    // Active first
+    if (a.status === "Activo" && b.status !== "Activo") return -1;
+    if (a.status !== "Activo" && b.status === "Activo") return 1;
+    // Newest first
+    return new Date(b.start_date).getTime() - new Date(a.start_date).getTime();
+  });
+
+  // Use sortedRentals for pagination
+  const totalPages = Math.ceil(sortedRentals.length / rentalsPerPage);
+  const currentRentals = sortedRentals.slice((page - 1) * rentalsPerPage, page * rentalsPerPage);
 
   const filteredBikes = bikes.filter(
     (b) =>
