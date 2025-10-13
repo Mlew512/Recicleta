@@ -418,6 +418,7 @@ export default function BikesPage() {
               <input
                 type="file"
                 accept="image/*"
+                capture="environment" // This hints mobile browsers to use the rear camera
                 onChange={(e) => setPhoto(e.target.files?.[0] || null)}
                 className="border px-3 py-2 rounded bg-gray-50 w-full"
               />
@@ -518,12 +519,14 @@ export default function BikesPage() {
                       </button>
                     </div>
                   </div>
-                  <button
-                    className="mt-2 bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
-                    onClick={() => router.push(`/rentals?bike=${bike.id}`)}
-                  >
-                    {lang === "en" ? "Rent" : "Alquilar"}
-                  </button>
+                  {bike.status === "Disponible" && (
+                    <button
+                      className="mt-2 bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+                      onClick={() => router.push(`/rentals?bike=${bike.id}`)}
+                    >
+                      {lang === "en" ? "Rent" : "Alquilar"}
+                    </button>
+                  )}
                 </div>
               ))
             )}
@@ -621,6 +624,7 @@ export default function BikesPage() {
                 <input
                   type="file"
                   accept="image/*"
+                  capture="environment"
                   onChange={(e) => setEditPhoto(e.target.files?.[0] || null)}
                   className="border px-3 py-2 rounded w-full mb-4"
                 />

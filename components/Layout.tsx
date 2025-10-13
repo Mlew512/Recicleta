@@ -34,6 +34,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navLinks = [
     { href: "/bikes", label: lang === "en" ? "Bikes" : "Bicicletas" },
     { href: "/users", label: lang === "en" ? "Users" : "Usuarios" },
+    { href: "/users/pending", label: lang === "en" ? "Pending Users" : "Usuarios pendientes" },
     { href: "/rentals", label: lang === "en" ? "Rentals" : "Alquileres" },
     { href: "/memberships", label: lang === "en" ? "Membership" : "Membresía" },
     { href: "/sales", label: lang === "en" ? "Sales" : "Ventas" },
