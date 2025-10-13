@@ -6,7 +6,41 @@ import { useLanguage } from "@/context/LanguageContext";
 import { mutate } from "swr";
 import { useRouter } from "next/router";
 
-type Rental = Database['public']['Tables']['rentals']['Row']
+type Rental = {
+  id: string;
+  user_id: string;
+  bike_id: string;
+  start_date: string;
+  end_date: string;
+  rental_type: string;
+  user_type: "adult" | "child" | "charity";
+  deposit: number;
+  rental_fee: number;
+  total_cost: number;
+  status: string;
+  damage_cost: number;
+  deposit_refund: number;
+  created_by_email?: string;
+  closed_by_email?: string;
+  users?: {
+    id: string;
+    name: string;
+    dni: string;
+    email: string;
+    phone: string;
+    address: string;
+    // ...other user fields...
+  };
+  bikes?: {
+    id: string;
+    brand_model: string;
+    bike_id: string;
+    type?: string; // <-- Add this line
+    // ...other bike fields...
+  };
+  // ...other fields if needed...
+};
+
 type Bike = Database['public']['Tables']['bikes']['Row']
 type User = Database['public']['Tables']['users']['Row']
 type RentalType = 'adult' | 'child' | 'charity' | ''
@@ -177,7 +211,8 @@ export default function RentalsPage() {
       refund = Math.max(refund - damageCost, 0);
     }
 
-    const closerEmail = supabase.auth.user()?.email; // or however you get the logged-in user's email
+    const { data: { user } } = await supabase.auth.getUser();
+    const closerEmail = user?.email || null;
 
     const { error: updateError } = await supabase
       .from('rentals')

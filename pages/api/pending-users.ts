@@ -22,7 +22,7 @@ const handleApprove = async (pendingUser) => {
     email: pendingUser.email
   }])
   // Remove from pending_users
-  await supabase.from('pending_users').delete().eq('id', pendingUser.id)
-  // Refresh list
-  await fetchPendingUsers()
+  await supabase.from('pending_users').delete().eq('id', pendingUser.id);
+  // Do NOT call fetchPendingUsers() here
+  // The frontend should refetch after the API call
 }
