@@ -11,6 +11,7 @@ interface Sale {
   buyer_name?: string;
   buyer_email?: string;
   sale_date: string;
+  created_by_email?: string;
 }
 
 export default function SalesPage() {
@@ -28,17 +29,20 @@ export default function SalesPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
+  // Search state
+  const [search, setSearch] = useState("");
+
   useEffect(() => {
     fetchSales();
   }, []);
 
   const fetchSales = async () => {
     setLoading(true);
-    const { data } = await supabase.from("sales").select("*");
-    // if you want to log errors:
-    // const { data, error } = await supabase.from("sales").select("*");
-    // if (error) console.error(error);
-    setSales(data || []);
+    const { data, error } = await supabase
+      .from("sales")
+      .select("*")
+      .order("sale_date", { ascending: false });
+    if (!error) setSales(data || []);
     setLoading(false);
   };
 
@@ -59,12 +63,18 @@ export default function SalesPage() {
     date: lang === "en" ? "Date" : "Fecha",
     anon: lang === "en" ? "Anonymous" : "Anónimo",
     type: lang === "en" ? "Type" : "Tipo",
+    search: lang === "en" ? "Search sales..." : "Buscar ventas...",
+    soldBy: lang === "en" ? "Sold by" : "Vendido por",
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAdding(true);
     setMessage(null);
+
+    // Get current user email for created_by_email
+    const { data } = await supabase.auth.getUser();
+    const createdByEmail = data.user?.email || null;
 
     const saleData = {
       item: isDonation ? labels.donation : item,
@@ -73,6 +83,7 @@ export default function SalesPage() {
       buyer_name: buyerName.trim() ? buyerName : null,
       buyer_email: buyerEmail.trim() ? buyerEmail : null,
       sale_date: new Date().toISOString().split("T")[0],
+      created_by_email: createdByEmail,
     };
 
     const { error } = await supabase.from("sales").insert([saleData]);
@@ -91,10 +102,34 @@ export default function SalesPage() {
     setAdding(false);
   };
 
+  // Filter sales by search
+  const filteredSales = sales.filter((s) =>
+    (s.item?.toLowerCase().includes(search.toLowerCase()) ||
+      s.buyer_name?.toLowerCase().includes(search.toLowerCase()) ||
+      s.buyer_email?.toLowerCase().includes(search.toLowerCase()) ||
+      s.created_by_email?.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  if (loading) return <Layout><div className="p-6">{labels.loading}</div></Layout>;
+
+  // Helper to display user before @
+  const getUserName = (email?: string) => {
+    if (!email) return labels.anon;
+    return email.split("@")[0];
+  };
+
   return (
     <Layout>
-      <div className="max-w-3xl mx-auto bg-white p-8 rounded shadow mt-8">
+      <div className="max-w-4xl mx-auto p-4">
         <h1 className="text-2xl font-bold mb-6">{labels.title}</h1>
+        {/* Search Bar */}
+        <input
+          type="text"
+          placeholder={labels.search}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 mb-4 w-full md:w-1/2"
+        />
         {/* Add Sale/Donation Form */}
         <form onSubmit={handleSubmit} className="flex flex-wrap gap-4 mb-8 bg-gray-50 p-4 rounded">
           <div className="flex items-center gap-2 w-full">
@@ -163,39 +198,63 @@ export default function SalesPage() {
           <div className="mb-6 text-center text-green-700 font-semibold">{message}</div>
         )}
         {/* Sales Table */}
-        {loading ? (
-          <p>{labels.loading}</p>
-        ) : sales.length === 0 ? (
+        {filteredSales.length === 0 ? (
           <p className="text-gray-500">{labels.noSales}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border border-gray-300">
-              <thead className="bg-gray-800 text-white">
-                <tr>
-                  <th className="p-2 border">{labels.type}</th>
-                  <th className="p-2 border">{labels.item}</th>
-                  <th className="p-2 border">{labels.amount}</th>
-                  <th className="p-2 border">{labels.quantity}</th>
-                  <th className="p-2 border">{labels.buyerName}</th>
-                  <th className="p-2 border">{labels.buyerEmail}</th>
-                  <th className="p-2 border">{labels.date}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sales.map((s) => (
-                  <tr key={s.id} className="hover:bg-gray-100">
-                    <td className="border p-2">{s.item === labels.donation ? labels.donation : labels.sale}</td>
-                    <td className="border p-2">{s.item}</td>
-                    <td className="border p-2">{s.amount}</td>
-                    <td className="border p-2">{s.quantity}</td>
-                    <td className="border p-2">{s.buyer_name || labels.anon}</td>
-                    <td className="border p-2">{s.buyer_email || labels.anon}</td>
-                    <td className="border p-2">{s.sale_date}</td>
+          <>
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto bg-white shadow rounded-lg mb-4">
+              <table className="min-w-full border border-gray-300">
+                <thead className="bg-gray-800 text-white">
+                  <tr>
+                    <th className="p-2 border">{labels.type}</th>
+                    <th className="p-2 border">{labels.item}</th>
+                    <th className="p-2 border">{labels.amount}</th>
+                    <th className="p-2 border">{labels.quantity}</th>
+                    <th className="p-2 border">{labels.buyerName}</th>
+                    <th className="p-2 border">{labels.buyerEmail}</th>
+                    <th className="p-2 border">{labels.date}</th>
+                    <th className="p-2 border">{labels.soldBy}</th>
+                    <th className="p-2 border">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filteredSales.map((s) => (
+                    <tr key={s.id} className="hover:bg-gray-100">
+                      <td className="border p-2">{s.item === labels.donation ? labels.donation : labels.sale}</td>
+                      <td className="border p-2">{s.item}</td>
+                      <td className="border p-2">{s.amount}</td>
+                      <td className="border p-2">{s.quantity}</td>
+                      <td className="border p-2">{s.buyer_name || labels.anon}</td>
+                      <td className="border p-2">{s.buyer_email || labels.anon}</td>
+                      <td className="border p-2">{s.sale_date}</td>
+                      <td className="border p-2">{getUserName(s.created_by_email)}</td>
+                      <td className="border p-2">
+                        {/* Add your edit/send receipt buttons here */}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* Mobile Cards */}
+            <div className="block md:hidden">
+              {filteredSales.map((sale) => (
+                <div key={sale.id} className="bg-white rounded shadow p-4 mb-4 border">
+                  <div className="font-bold text-lg mb-2">{sale.item}</div>
+                  <div className="text-sm mb-1"><b>{labels.amount}:</b> {sale.amount}</div>
+                  <div className="text-sm mb-1"><b>{labels.quantity}:</b> {sale.quantity}</div>
+                  <div className="text-sm mb-1"><b>{labels.buyerName}:</b> {sale.buyer_name || labels.anon}</div>
+                  <div className="text-sm mb-1"><b>{labels.buyerEmail}:</b> {sale.buyer_email || labels.anon}</div>
+                  <div className="text-sm mb-1"><b>{labels.date}:</b> {sale.sale_date}</div>
+                  <div className="text-sm mb-1"><b>{labels.soldBy}:</b> {getUserName(sale.created_by_email)}</div>
+                  <div className="flex gap-2 mt-2">
+                    {/* Add your edit/send receipt buttons here */}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </Layout>

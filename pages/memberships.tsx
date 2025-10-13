@@ -25,6 +25,9 @@ export default function MembershipsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
+  // Search state
+  const [search, setSearch] = useState("");
+
   useEffect(() => {
     fetchMemberships();
   }, []);
@@ -65,6 +68,9 @@ export default function MembershipsPage() {
     info: lang === "en"
       ? "Membership is valid for one year and costs €2."
       : "La membresía es válida por un año y cuesta €2.",
+    search: lang === "en"
+      ? "Search by name, email, or DNI..."
+      : "Buscar por nombre, email o DNI...",
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -98,6 +104,13 @@ export default function MembershipsPage() {
     }
     setAdding(false);
   };
+
+  // Filter memberships by search (name, email, dni)
+  const filteredMemberships = memberships.filter(m =>
+    (m.name?.toLowerCase().includes(search.toLowerCase()) ||
+      m.email?.toLowerCase().includes(search.toLowerCase()) ||
+      m.dni?.toLowerCase().includes(search.toLowerCase()))
+  );
 
   return (
     <Layout>
@@ -141,10 +154,18 @@ export default function MembershipsPage() {
         {message && (
           <div className="mb-6 text-center text-green-700 font-semibold">{message}</div>
         )}
+        {/* Search Bar */}
+        <input
+          type="text"
+          placeholder={labels.search}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 mb-4 w-full md:w-1/2"
+        />
         {/* Memberships Table */}
         {loading ? (
           <p>{labels.loading}</p>
-        ) : memberships.length === 0 ? (
+        ) : filteredMemberships.length === 0 ? (
           <p className="text-gray-500">{labels.noMembers}</p>
         ) : (
           <div className="overflow-x-auto">
@@ -160,7 +181,7 @@ export default function MembershipsPage() {
                 </tr>
               </thead>
               <tbody>
-                {memberships.map((m) => (
+                {filteredMemberships.map((m) => (
                   <tr key={m.id} className="hover:bg-gray-100">
                     <td className="border p-2">{m.name}</td>
                     <td className="border p-2">{m.dni}</td>

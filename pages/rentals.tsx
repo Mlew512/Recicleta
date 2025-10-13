@@ -45,6 +45,16 @@ type Bike = Database['public']['Tables']['bikes']['Row']
 type User = Database['public']['Tables']['users']['Row']
 type RentalType = 'adult' | 'child' | 'charity' | ''
 
+function formatDate(dateStr: string, lang: string) {
+  if (!dateStr) return "-";
+  const date = new Date(dateStr);
+  return date.toLocaleDateString(lang === "es" ? "es-ES" : "en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  });
+}
+
 export default function RentalsPage() {
   const router = useRouter();
   const selectedBikeFromQuery = router.query.bike as string;
@@ -282,6 +292,22 @@ export default function RentalsPage() {
     setEditingRentalId(null);
   };
 
+  const handleDeleteRental = async (rentalId: string) => {
+    const confirmed = window.confirm(lang === "en"
+      ? "Are you sure you want to delete this rental?"
+      : "¿Seguro que quieres eliminar este alquiler?");
+    if (!confirmed) return;
+
+    const { error } = await supabase.from("rentals").delete().eq("id", rentalId);
+    if (error) {
+      setMessage(lang === "en" ? "Error deleting rental: " : "Error eliminando alquiler: " + error.message);
+    } else {
+      setMessage(lang === "en" ? "Rental deleted." : "Alquiler eliminado.");
+      await loadData();
+    }
+    setEditingRentalId(null);
+  };
+
   const filteredRentals = rentals.filter((r: Rental) => {
     const q = search.toLowerCase();
     return (
@@ -451,89 +477,91 @@ export default function RentalsPage() {
           />
 
           {/* Responsive Table for Desktop */}
-          <div className="hidden md:block overflow-x-auto bg-white shadow-lg rounded-lg">
+          <div className="hidden md:block overflow-x-auto bg-white shadow rounded-lg mb-4">
             <table className="min-w-full border border-gray-300">
-              <thead className="bg-gray-200 text-gray-800">
+              <thead className="bg-gray-800 text-white">
                 <tr>
-                  <th className="p-2 border">ID</th>
+                  <th className="p-2 border text-left" style={{ width: "60px" }}>{lang === "en" ? "Edit" : "Editar"}</th>
                   <th className="p-2 border">Bike</th>
                   <th className="p-2 border">User</th>
-                  <th className="p-2 border">Type</th>
                   <th className="p-2 border">Start</th>
                   <th className="p-2 border">End</th>
-                  <th className="p-2 border">{labels.deposit}</th>
-                  <th className="p-2 border">{labels.cost}</th>
-                  <th className="p-2 border">{labels.damages}</th>
-                  <th className="p-2 border">{labels.refund}</th>
-                  <th className="p-2 border">{labels.status}</th>
-                  <th className="p-2 border">{labels.actions}</th>
-                  <th className="p-2 border">
-                    {lang === "en" ? "Staff Check-in" : "Personal ingreso"}
-                  </th>
-                  <th className="p-2 border">
-                    {lang === "en" ? "Staff Check-out" : "Personal egreso"}
-                  </th>
+                  <th className="p-2 border">Type</th>
+                  <th className="p-2 border">Deposit</th>
+                  <th className="p-2 border">{lang === "en" ? "Cost (€)" : "Costo (€)"}</th>
+                  <th className="p-2 border">{lang === "en" ? "Refund (€)" : "Reembolso (€)"}</th>
+                  <th className="p-2 border text-xs font-normal" style={{ width: "90px" }}>Check-in<br /><span className="text-xs text-gray-500">(user)</span></th>
+                  <th className="p-2 border text-xs font-normal" style={{ width: "90px" }}>Check-out<br /><span className="text-xs text-gray-500">(user)</span></th>
+                  <th className="p-2 border text-right" style={{ width: "120px" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {currentRentals.length === 0 && (
-                  <tr>
-                    <td colSpan={14} className="p-4 text-center text-gray-500">
-                      {labels.noRentals}
-                    </td>
-                  </tr>
-                )}
-                {currentRentals.map((r) => (
-                  <tr
-                    key={r.id}
-                    className={`${
-                      r.status === 'Completado'
-                        ? 'bg-gray-50'
-                        : 'bg-green-50 hover:bg-green-100'
-                    } transition`}
-                  >
-                    <td className="p-2 border">{r.id}</td>
-                    <td className="p-2 border">
-                      {r.bikes
-                        ? `${r.bikes.brand_model} (${r.bikes.bike_id})`
-                        : r.bike_id}
-                    </td>
-                    <td className="p-2 border">
-                      {r.users?.name} ({r.users?.dni})
-                    </td>
-                    <td className="p-2 border capitalize">{r.user_type}</td>
-                    <td className="p-2 border">{r.start_date}</td>
-                    <td className="p-2 border">{r.end_date || '-'}</td>
-                    {/* Deposit: always show */}
-                    <td className="p-2 border">{r.deposit ?? '-'}</td>
-                    {/* Cost: show when completed, hide while active */}
-                    <td className="p-2 border">
-                      {r.status === "Completado" ? r.total_cost ?? '-' : '-'}
-                    </td>
-                    {/* Damages: show when completed, hide while active */}
-                    <td className="p-2 border">
-                      {r.status === "Completado" ? r.damage_cost ?? '-' : '-'}
-                    </td>
-                    {/* Refund: show when completed, hide while active */}
-                    <td className="p-2 border font-semibold text-green-700">
-                      {r.status === "Completado" ? r.deposit_refund ?? '-' : '-'}
-                    </td>
-                    <td className="p-2 border">{r.status}</td>
-                    <td className="p-2 border text-center">
-                      {r.status === "Activo" && (
-                        <button
-                          onClick={() => closeRental(r)}
-                          className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
-                        >
-                          {labels.close}
+                {rentals.map((rental) => (
+                  <tr key={rental.id} className="hover:bg-gray-100">
+                    {/* Edit button on the left */}
+                    <td className="border p-2 text-left">
+                      {editingRentalId === rental.id ? (
+                        <>
+                          <button className="bg-green-600 text-white px-2 py-1 rounded mr-2" onClick={() => handleSaveBike(rental)}>
+                            {lang === "en" ? "Save" : "Guardar"}
+                          </button>
+                          <button className="bg-gray-400 text-white px-2 py-1 rounded mr-2" onClick={handleCancelEdit}>
+                            {lang === "en" ? "Cancel" : "Cancelar"}
+                          </button>
+                          <button
+                            className="bg-red-600 text-white px-2 py-1 rounded"
+                            onClick={() => handleDeleteRental(rental.id)}
+                          >
+                            {lang === "en" ? "Delete" : "Eliminar"}
+                          </button>
+                        </>
+                      ) : (
+                        <button className="bg-blue-600 text-white px-2 py-1 rounded" onClick={() => handleEditBike(rental)}>
+                          {lang === "en" ? "Edit" : "Editar"}
                         </button>
                       )}
                     </td>
-                    <td>
-                      {r.created_by_email || (lang === "en" ? "N/A" : "No disponible")}
+                    <td className="border p-2">
+                      {editingRentalId === rental.id ? (
+                        <select
+                          className="border px-2 py-1 rounded w-full"
+                          value={editBikeId}
+                          onChange={e => setEditBikeId(e.target.value)}
+                        >
+                          {bikes
+                            .filter(bike => bike.status !== "En uso") // Only show bikes not in use
+                            .map(bike => (
+                              <option key={bike.id} value={bike.id}>
+                                {bike.brand_model} ({bike.bike_id})
+                              </option>
+                            ))}
+                        </select>
+                      ) : (
+                        rental.bikes?.brand_model || rental.bike_id
+                      )}
                     </td>
-                    <td>
-                      {r.closed_by_email || (lang === "en" ? "N/A" : "No disponible")}
+                    <td className="border p-2">{rental.users?.name || rental.user_id}</td>
+                    <td className="border p-2">{formatDate(rental.start_date, lang)}</td>
+                    <td className="border p-2">{formatDate(rental.end_date, lang)}</td>
+                    <td className="border p-2">
+                      {(rental.user_type
+                        ? rental.user_type.charAt(0).toUpperCase() + rental.user_type.slice(1)
+                        : lang === "en" ? "Unknown" : "Desconocido")}
+                    </td>
+                    <td className="border p-2">{rental.deposit}</td>
+                    <td className="border p-2">{rental.total_cost}</td>
+                    <td className="border p-2">{rental.deposit_refund}</td>
+                    <td className="border p-2 text-xs text-gray-600">{rental.created_by_email?.split("@")[0]}</td>
+                    <td className="border p-2 text-xs text-gray-600">{rental.closed_by_email?.split("@")[0]}</td>
+                    <td className="border p-2 text-right">
+                      {editingRentalId !== rental.id && rental.status === "Activo" && (
+                        <button
+                          onClick={() => closeRental(rental)}
+                          className="bg-blue-500 text-white px-3 py-1 rounded"
+                        >
+                          {lang === "en" ? "Return Bike" : "Devolver bici"}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
