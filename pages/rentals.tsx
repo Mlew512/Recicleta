@@ -6,7 +6,41 @@ import { useLanguage } from "@/context/LanguageContext";
 import { mutate } from "swr";
 import { useRouter } from "next/router";
 
-type Rental = Database['public']['Tables']['rentals']['Row']
+type Rental = {
+  id: string;
+  user_id: string;
+  bike_id: string;
+  start_date: string;
+  end_date: string;
+  rental_type: string;
+  user_type: "adult" | "child" | "charity";
+  deposit: number;
+  rental_fee: number;
+  total_cost: number;
+  status: string;
+  damage_cost: number;
+  deposit_refund: number;
+  created_by_email?: string;
+  closed_by_email?: string;
+  users?: {
+    id: string;
+    name: string;
+    dni: string;
+    email: string;
+    phone: string;
+    address: string;
+    // ...other user fields...
+  };
+  bikes?: {
+    id: string;
+    brand_model: string;
+    bike_id: string;
+    type?: string; // <-- Add this line
+    // ...other bike fields...
+  };
+  // ...other fields if needed...
+};
+
 type Bike = Database['public']['Tables']['bikes']['Row']
 type User = Database['public']['Tables']['users']['Row']
 type RentalType = 'adult' | 'child' | 'charity' | ''
@@ -28,6 +62,8 @@ export default function RentalsPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const rentalsPerPage = 10
+  const [editingRentalId, setEditingRentalId] = useState<string | null>(null);
+  const [editBikeId, setEditBikeId] = useState<string>("");
 
   // Use useCallback to memoize loadData
   const loadData = useCallback(async () => {
@@ -85,6 +121,10 @@ export default function RentalsPage() {
       return
     }
 
+    // Get current user email
+    const { data: { user } } = await supabase.auth.getUser();
+    const userEmail = user?.email || null;
+
     const deposit = rentalType === "adult" ? 50 : 
                    rentalType === "child" ? 30 : 0;
 
@@ -99,6 +139,7 @@ export default function RentalsPage() {
         deposit: deposit,
         total_cost: 0, // Will be calculated when closed
         user_type: rentalType || "adult",
+        created_by_email: userEmail, // <-- This will now work!
       },
     ]);
 
@@ -107,7 +148,11 @@ export default function RentalsPage() {
       return
     }
 
-    await supabase.from('bikes').update({ status: 'En uso' }).eq('id', selectedBike)
+    await supabase
+      .from('bikes')
+      .update({ status: 'En uso' })
+      .eq('id', selectedBike);
+
     setMessage('Rental started successfully!')
 
     await loadData();
@@ -160,11 +205,14 @@ export default function RentalsPage() {
       refund = Math.max(50 - totalCost, 0);
     }
 
-    // Add damage cost if any
+    // Add damage cost if anyx
     if (damageCost > 0) {
       totalCost += damageCost;
       refund = Math.max(refund - damageCost, 0);
     }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    const closerEmail = user?.email || null;
 
     const { error: updateError } = await supabase
       .from('rentals')
@@ -172,7 +220,8 @@ export default function RentalsPage() {
         end_date: end.toISOString(),
         total_cost: totalCost,
         deposit_refund: refund,
-        status: 'Completado'
+        status: 'Completado',
+        closed_by_email: closerEmail,
       })
       .eq('id', rental.id);
 
@@ -191,6 +240,48 @@ export default function RentalsPage() {
     await loadData();
   }
 
+  const handleEditBike = (rental: Rental) => {
+    setEditingRentalId(rental.id);
+    setEditBikeId(rental.bike_id);
+  };
+
+  const handleSaveBike = async (rental: Rental) => {
+    // Update rental with new bike_id
+    await supabase
+      .from("rentals")
+      .update({ bike_id: editBikeId })
+      .eq("id", rental.id);
+
+    // Set new bike as "En uso"
+    await supabase
+      .from("bikes")
+      .update({ status: "En uso" })
+      .eq("id", editBikeId);
+
+    // Optionally set previous bike as "Disponible" if not rented elsewhere
+    if (rental.bike_id !== editBikeId) {
+      const { data: otherRentals } = await supabase
+        .from("rentals")
+        .select("id")
+        .eq("bike_id", rental.bike_id)
+        .eq("status", "Activo");
+
+      if (!otherRentals || otherRentals.length === 0) {
+        await supabase
+          .from("bikes")
+          .update({ status: "Disponible" })
+          .eq("id", rental.bike_id);
+      }
+    }
+
+    setEditingRentalId(null);
+    await loadData();
+  };
+
+  const handleCancelEdit = () => {
+    setEditingRentalId(null);
+  };
+
   const filteredRentals = rentals.filter((r: Rental) => {
     const q = search.toLowerCase();
     return (
@@ -201,8 +292,18 @@ export default function RentalsPage() {
     );
   })
 
-  const totalPages = Math.ceil(filteredRentals.length / rentalsPerPage)
-  const currentRentals = filteredRentals.slice((page - 1) * rentalsPerPage, page * rentalsPerPage)
+  // Sort: active first, then by start_date descending (newest first)
+  const sortedRentals = [...filteredRentals].sort((a, b) => {
+    // Active first
+    if (a.status === "Activo" && b.status !== "Activo") return -1;
+    if (a.status !== "Activo" && b.status === "Activo") return 1;
+    // Newest first
+    return new Date(b.start_date).getTime() - new Date(a.start_date).getTime();
+  });
+
+  // Use sortedRentals for pagination
+  const totalPages = Math.ceil(sortedRentals.length / rentalsPerPage);
+  const currentRentals = sortedRentals.slice((page - 1) * rentalsPerPage, page * rentalsPerPage);
 
   const filteredBikes = bikes.filter(
     (b) =>
@@ -349,7 +450,8 @@ export default function RentalsPage() {
             className="border px-3 py-2 rounded w-full mb-4"
           />
 
-          <div className="overflow-x-auto bg-white shadow-lg rounded-lg">
+          {/* Responsive Table for Desktop */}
+          <div className="hidden md:block overflow-x-auto bg-white shadow-lg rounded-lg">
             <table className="min-w-full border border-gray-300">
               <thead className="bg-gray-200 text-gray-800">
                 <tr>
@@ -365,12 +467,18 @@ export default function RentalsPage() {
                   <th className="p-2 border">{labels.refund}</th>
                   <th className="p-2 border">{labels.status}</th>
                   <th className="p-2 border">{labels.actions}</th>
+                  <th className="p-2 border">
+                    {lang === "en" ? "Staff Check-in" : "Personal ingreso"}
+                  </th>
+                  <th className="p-2 border">
+                    {lang === "en" ? "Staff Check-out" : "Personal egreso"}
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {currentRentals.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="p-4 text-center text-gray-500">
+                    <td colSpan={14} className="p-4 text-center text-gray-500">
                       {labels.noRentals}
                     </td>
                   </tr>
@@ -385,7 +493,11 @@ export default function RentalsPage() {
                     } transition`}
                   >
                     <td className="p-2 border">{r.id}</td>
-                    <td className="p-2 border">{r.bikes?.bike_id || r.bike_id}</td>
+                    <td className="p-2 border">
+                      {r.bikes
+                        ? `${r.bikes.brand_model} (${r.bikes.bike_id})`
+                        : r.bike_id}
+                    </td>
                     <td className="p-2 border">
                       {r.users?.name} ({r.users?.dni})
                     </td>
@@ -417,10 +529,122 @@ export default function RentalsPage() {
                         </button>
                       )}
                     </td>
+                    <td>
+                      {r.created_by_email || (lang === "en" ? "N/A" : "No disponible")}
+                    </td>
+                    <td>
+                      {r.closed_by_email || (lang === "en" ? "N/A" : "No disponible")}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile Card Layout */}
+          <div className="md:hidden">
+            {currentRentals.map((r) => (
+              <div key={r.id} className="bg-white rounded shadow p-4 mb-4 border">
+                {/* Renter's name as card title */}
+                <div className="flex justify-between items-center mb-2">
+                  <span className="font-bold text-lg">
+                    {r.users?.name || (lang === "en" ? "Unknown user" : "Usuario desconocido")}
+                  </span>
+                  <span className="text-xs px-2 py-1 rounded bg-gray-200">{r.status}</span>
+                </div>
+                {/* Bike info */}
+                <div className="mb-2">
+                  <b>{lang === "en" ? "Bike:" : "Bicicleta:"}</b>{" "}
+                  {r.bikes ? `${r.bikes.brand_model} (${r.bikes.bike_id})` : r.bike_id}
+                </div>
+                {/* Inline Edit Bike */}
+                {editingRentalId === r.id && (
+                  <div className="mb-2">
+                    <label className="block mb-1 font-medium">
+                      {lang === "en" ? "Change Bike:" : "Cambiar bicicleta:"}
+                    </label>
+                    <select
+                      className="border px-2 py-1 rounded w-full"
+                      value={editBikeId}
+                      onChange={e => setEditBikeId(e.target.value)}
+                    >
+                      {bikes.map(bike => (
+                        <option key={bike.id} value={bike.id}>
+                          {bike.brand_model} ({bike.bike_id})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {/* Rental details */}
+                <div className="text-sm mb-2">
+                  <div>
+                    <b>{lang === "en" ? "User:" : "Usuario:"}</b> {r.users?.name} ({r.users?.dni})
+                  </div>
+                  <div>
+                    <b>{lang === "en" ? "Type:" : "Tipo:"}</b> {r.user_type}
+                  </div>
+                  <div>
+                    <b>{lang === "en" ? "Start:" : "Inicio:"}</b> {r.start_date}
+                  </div>
+                  <div>
+                    <b>{lang === "en" ? "End:" : "Fin:"}</b> {r.end_date || "-"}
+                  </div>
+                  <div>
+                    <b>{lang === "en" ? "Deposit:" : "Depósito:"}</b> {r.deposit ?? "-"}
+                  </div>
+                  <div>
+                    <b>{lang === "en" ? "Cost:" : "Costo:"}</b> {r.status === "Completado" ? r.total_cost ?? "-" : "-"}
+                  </div>
+                  <div>
+                    <b>{lang === "en" ? "Damages:" : "Daños:"}</b> {r.status === "Completado" ? r.damage_cost ?? "-" : "-"}
+                  </div>
+                  <div>
+                    <b>{lang === "en" ? "Refund:" : "Reembolso:"}</b> {r.status === "Completado" ? r.deposit_refund ?? "-" : "-"}
+                  </div>
+                  <div>
+                    <b>{lang === "en" ? "Staff Check-in:" : "Personal ingreso:"}</b> {r.created_by_email || (lang === "en" ? "N/A" : "No disponible")}
+                  </div>
+                  <div>
+                    <b>{lang === "en" ? "Staff Check-out:" : "Personal egreso:"}</b> {r.closed_by_email || (lang === "en" ? "N/A" : "No disponible")}
+                  </div>
+                </div>
+                {/* Action buttons */}
+                <div className="flex gap-2">
+                  {editingRentalId === r.id ? (
+                    <>
+                      <button
+                        className="bg-green-600 text-white px-2 py-1 rounded"
+                        onClick={() => handleSaveBike(r)}
+                      >
+                        {lang === "en" ? "Save" : "Guardar"}
+                      </button>
+                      <button
+                        className="bg-gray-400 text-white px-2 py-1 rounded"
+                        onClick={handleCancelEdit}
+                      >
+                        {lang === "en" ? "Cancel" : "Cancelar"}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="bg-blue-600 text-white px-2 py-1 rounded"
+                      onClick={() => handleEditBike(r)}
+                    >
+                      {lang === "en" ? "Edit Bike" : "Editar bici"}
+                    </button>
+                  )}
+                  {r.status === "Activo" && (
+                    <button
+                      onClick={() => closeRental(r)}
+                      className="bg-blue-500 text-white px-3 py-1 rounded"
+                    >
+                      {labels.close}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Pagination */}

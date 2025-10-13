@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import Layout from "@/components/Layout";
 import { useLanguage } from "@/context/LanguageContext";
 
@@ -23,8 +22,8 @@ export default function RegisterPage() {
     submit: lang === "en" ? "Register" : "Registrar",
     submitting: lang === "en" ? "Submitting..." : "Registrando...",
     success: lang === "en"
-      ? "Registration successful! Thank you."
-      : "¡Registro exitoso! Gracias.",
+      ? "Registration submitted! Await approval."
+      : "¡Registro enviado! Espere aprobación.",
     error: lang === "en" ? "Error: " : "Error: ",
   };
 
@@ -33,12 +32,16 @@ export default function RegisterPage() {
     setSubmitting(true);
     setMessage(null);
 
-    const { error } = await supabase.from("users").insert([
-      { name, dni, email, phone, address }
-    ]);
+    // Send to pending_users table via API route
+    const res = await fetch("/api/pending-users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, dni, email, phone, address }),
+    });
 
-    if (error) {
-      setMessage(labels.error + error.message);
+    if (!res.ok) {
+      const data = await res.json();
+      setMessage(labels.error + (data.error || "Unknown error"));
     } else {
       setMessage(labels.success);
       setName("");
