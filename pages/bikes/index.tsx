@@ -657,12 +657,6 @@ export default function BikesPage() {
                       >
                         {lang === "en" ? "Edit" : "Editar"}
                       </button>
-                      <button
-                        onClick={() => deleteBike(bike.id)}
-                        className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 text-sm"
-                      >
-                        {lang === "en" ? "Delete" : "Eliminar"}
-                      </button>
                     </div>
                   </div>
                   {bike.status === "Disponible" && (
@@ -810,6 +804,17 @@ export default function BikesPage() {
                 />
 
                 <div className="flex justify-end gap-2">
+                  <button
+          onClick={() => {
+            if (window.confirm(lang === "en" ? "Are you sure you want to delete this bike?" : "¿Está seguro de que quiere eliminar esta bicicleta?")) {
+              deleteBike(editingBike.id);
+              closeEditModal();
+            }
+          }}
+          className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+        >
+          {lang === "en" ? "Delete Bike" : "Eliminar Bicicleta"}
+        </button>
                   <button onClick={closeEditModal} className="px-4 py-2 rounded bg-gray-300 hover:bg-gray-400">
                     {lang === "en" ? "Cancel" : "Cancelar"}
                   </button>
@@ -817,6 +822,7 @@ export default function BikesPage() {
                     {editUploading ? (lang === "en" ? "Saving..." : "Guardando...") : (lang === "en" ? "Save" : "Guardar")}
                   </button>
                 </div>
+                
               </div>
             </div>
           )        
