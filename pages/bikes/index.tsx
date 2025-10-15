@@ -7,7 +7,7 @@ import useSWR from "swr";
 import { useLanguage } from "@/context/LanguageContext";
 import { useRouter } from "next/router";
 import dayjs from "dayjs";
-import { getErrorMessage } from '@/lib/errorHandling';
+import imageCompression from "browser-image-compression";
 
 const fetcher = async () => {
   const { data, error } = await supabase
@@ -20,23 +20,111 @@ const fetcher = async () => {
 
 // Update the Bike interface to include an index signature
 interface Bike {
+  id: number;                 // <-- add
   bike_id: string;
   type: string;
   brand_model: string;
   size: string;
   condition: string;
   status: string;
-  [key: string]: unknown;  // Add index signature
+  notes?: string | null;      // <-- add
+  photo_url?: string | null;  // <-- add
+  [key: string]: unknown;
 }
+
+// Sizing guides by bike type
+const sizingGuides: Record<string, { [size: string]: string }> = {
+  Hybrid: {
+    XXS: "35–38 cm",
+    XS: "39–42 cm",
+    S: "43–46 cm",
+    M: "47–50 cm",
+    L: "51–54 cm",
+    XL: "55–58 cm",
+    XXL: "59–62 cm",
+  },
+  Mountain: {
+    XXS: "33–36 cm",
+    XS: "37–40 cm",
+    S: "41–44 cm",
+    M: "45–48 cm",
+    L: "49–52 cm",
+    XL: "53–56 cm",
+    XXL: "57–60 cm",
+  },
+  Road: {
+    XXS: "44–47 cm",
+    XS: "48–50 cm",
+    S: "51–53 cm",
+    M: "54–56 cm",
+    L: "57–59 cm",
+    XL: "60–62 cm",
+    XXL: "63–65 cm",
+  },
+  Gravel: {
+    XXS: "44–47 cm",
+    XS: "48–50 cm",
+    S: "51–53 cm",
+    M: "54–56 cm",
+    L: "57–59 cm",
+    XL: "60–62 cm",
+    XXL: "63–65 cm",
+  },
+  Folding: {
+    XXS: "No standard",
+    XS: "No standard",
+    S: "No standard",
+    M: "No standard",
+    L: "No standard",
+    XL: "No standard",
+    XXL: "No standard",
+  },
+  BMX: {
+    XXS: "No standard",
+    XS: "No standard",
+    S: "No standard",
+    M: "No standard",
+    L: "No standard",
+    XL: "No standard",
+    XXL: "No standard",
+  },
+  Childrens: {
+    XXS: "16–18 cm",
+    XS: "19–21 cm",
+    S: "22–24 cm",
+    M: "25–27 cm",
+    L: "28–30 cm",
+    XL: "31–33 cm",
+    XXL: "34–36 cm",
+  },
+};
+
+// Add this mapping above your BikesPage component:
+const sizeToHeightOrAge: Record<string, { height: string; age?: string }> = {
+  // Adult bikes
+  XXS: { height: "140–150 cm" },
+  XS: { height: "150–160 cm" },
+  S: { height: "160–168 cm" },
+  M: { height: "168–175 cm" },
+  L: { height: "175–183 cm" },
+  XL: { height: "183–190 cm" },
+  XXL: { height: "190+ cm" },
+  // Children's bikes (show age)
+  "Childrens-XXS": { height: "100–115 cm", age: "Ages 3–5" },
+  "Childrens-XS": { height: "110–120 cm", age: "Ages 4–6" },
+  "Childrens-S": { height: "115–130 cm", age: "Ages 5–7" },
+  "Childrens-M": { height: "130–145 cm", age: "Ages 6–8" },
+  "Childrens-L": { height: "145–160 cm", age: "Ages 7–9" },
+  "Childrens-XL": { height: "155–170 cm", age: "Ages 8–11" },
+  "Childrens-XXL": { height: "160–175 cm", age: "Ages 10–13" },
+};
+
+const PAGE_SIZE = 12; // page size for bikes list
 
 export default function BikesPage() {
   const { lang } = useLanguage();
   const router = useRouter();
-
-  // =====================
-  // Hooks (top-level only)
-  // =====================
-  const { data: bikes, error, mutate } = useSWR("/api/bikes", fetcher);
+  const { data: bikes, mutate } = useSWR("/api/bikes", fetcher);
 
   // Add new bike states
   const [bikeId, setBikeId] = useState("");
@@ -53,22 +141,16 @@ export default function BikesPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 8;
 
-  // Edit modal states
-  const [editingBike, setEditingBike] = useState<Bike | null>(null);
-  const [editBikeId, setEditBikeId] = useState("");
-  const [editType, setEditType] = useState("");
-  const [editBrandModel, setEditBrandModel] = useState("");
-  const [editSize, setEditSize] = useState("");
-  const [editCondition, setEditCondition] = useState("Good");
-  const [editStatus, setEditStatus] = useState("Disponible");
-  const [editNotes, setEditNotes] = useState("");
-  const [editPhoto, setEditPhoto] = useState<File | null>(null);
-  const [editUploading, setEditUploading] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
+  // Pagination state and derived data
+  const [page, setPage] = useState(1);
+  const items = Array.isArray(bikes) ? bikes : [];
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const paginatedBikes = items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+  useEffect(() => {
+    setPage(1); // reset to first page when list changes
+  }, [items.length]);
   // Auto-populate bikeId with next available (yy000 format)
   // This effect runs when bikes data changes
   useEffect(() => {
@@ -88,47 +170,18 @@ export default function BikesPage() {
     const nextId = `${year}${String(nextNumber).padStart(3, "0")}`;
     setBikeId(nextId);
   }, [bikes]);
-
-  // Early returns
-  if (error)
-    return (
-      <Layout>
-        <p>
-          {lang === "en" ? "Error loading bikes" : "Error cargando bicicletas"}
-        </p>
-      </Layout>
-    );
-  if (!bikes)
-    return (
-      <Layout>
-        <p>{lang === "en" ? "Loading..." : "Cargando..."}</p>
-      </Layout>
-    );
-
-  // Filter & search
-  const filteredBikes = bikes.filter((bike) => {
-    const text =
-      `${bike.bike_id} ${bike.brand_model} ${bike.type} ${bike.size} ${bike.condition}`.toLowerCase();
-    const matchesSearch = text.includes(search.toLowerCase());
-    const matchesFilter =
-      filter === "all"
-        ? true
-        : filter === "available"
-        ? bike.status === "Disponible"
-        : bike.status !== "Disponible";
-    return matchesSearch && matchesFilter;
-  });
-
-  // Pagination
-  const totalPages = Math.ceil(filteredBikes.length / itemsPerPage);
-  const paginatedBikes = filteredBikes.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
-
   // =====================
   // Add Bike
   // =====================
+  // Helper: consistent storage path per bike (prevents extra files)
+  const getBikePhotoPath = (bikePk: number) => `bikes/${bikePk}.jpg`;
+  const getPublicUrlWithVersion = (path: string) => {
+    const { data } = supabase.storage.from("bike-photos").getPublicUrl(path);
+    const url = data?.publicUrl || "";
+    return url ? `${url}?v=${Date.now()}` : null;
+  };
+
+  // Add Bike: insert first to get ID, then upload with upsert to a fixed path, then update photo_url
   const addBike = async () => {
     // Validation: require brandModel, type, and size
     if (!brandModel || !type || !size) {
@@ -143,60 +196,58 @@ export default function BikesPage() {
       setMessage(lang === "en" ? "Enter bike ID" : "Ingrese ID de bicicleta");
       return;
     }
-    let photoUrl = null;
-    if (photo) {
-      try {
-        setUploading(true);
-        const ext = photo.name.split(".").pop();
-        const fileName = `${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage
+    try {
+      setUploading(true);
+
+      // 1) Create bike without photo to get the new ID
+      const { data: inserted, error: insertErr } = await supabase
+        .from("bikes")
+        .insert([
+          {
+            bike_id: bikeId,
+            type,
+            brand_model: brandModel,
+            size,
+            condition,
+            status,
+            notes,
+            photo_url: null,
+          },
+        ])
+        .select("id")
+        .single();
+      if (insertErr) throw insertErr;
+
+      let photoUrl: string | null = null;
+      if (photo) {
+        const path = getBikePhotoPath(inserted.id);
+        const { error: uploadErr } = await supabase.storage
           .from("bike-photos")
-          .upload(fileName, photo);
-        if (uploadError) throw uploadError;
-        try {
-          const { data: publicUrlData } = await supabase.storage
-            .from("bike-photos")
-            .getPublicUrl(fileName);
-          photoUrl = publicUrlData?.publicUrl || null;
-        } catch (err: unknown) {
-          setMessage(
-            (lang === "en"
-              ? "Error uploading photo: "
-              : "Error al subir la foto: ") + (err instanceof Error ? err.message : String(err))
-          );
-          console.error("Error uploading photo:", err);
+          .upload(path, photo, {
+            upsert: true,
+            cacheControl: "0",
+            contentType: photo.type,
+          });
+        if (uploadErr) {
+          setMessage((lang === "en" ? "Error uploading photo: " : "Error subiendo foto: ") + uploadErr.message);
+          setUploading(false);
           return;
         }
-      } catch (err: unknown) {  // Changed from Record<string, unknown> to unknown
-        setMessage(
-          (lang === "en"
-            ? "Error uploading photo: "
-            : "Error subiendo foto: ") + getErrorMessage(err)
-        );
-        return;
-      } finally {
-        setUploading(false);
+        photoUrl = getPublicUrlWithVersion(path);
       }
-    }
-    const { error: insertError } = await supabase.from("bikes").insert([
-      {
-        bike_id: bikeId,
-        type,
-        brand_model: brandModel,
-        size,
-        condition,
-        status,
-        notes,
-        photo_url: photoUrl,
-      },
-    ]);
-    if (insertError)
-      setMessage(
-        (lang === "en"
-          ? "Error adding bike: "
-          : "Error agregando bicicleta: ") + insertError.message
-      );
-    else {
+
+      if (photoUrl) {
+        const { error: updateErr } = await supabase
+          .from("bikes")
+          .update({ photo_url: photoUrl })
+          .eq("id", inserted.id);
+        if (updateErr) {
+          setMessage((lang === "en" ? "Error updating photo URL: " : "Error actualizando URL de la foto: ") + updateErr.message);
+          setUploading(false);
+          return;
+        }
+      }
+
       setBikeId("");
       setType("");
       setBrandModel("");
@@ -209,6 +260,10 @@ export default function BikesPage() {
         lang === "en" ? "Bike added successfully!" : "Bicicleta agregada!"
       );
       mutate();
+    } catch (err: unknown) {
+      setMessage((lang === "en" ? "Error adding bike: " : "Error agregando bicicleta: ") + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setUploading(false);
     }
   };
   
@@ -234,79 +289,145 @@ export default function BikesPage() {
   // =====================
   // Edit Bike
   // =====================
+  // Add a single draft object for the edit modal to avoid stale cross-bike state
+  // 1) State for the edit modal
+  type BikeDraft = {
+    bike_id: string;
+    type: string;
+    brand_model: string;
+    size: string;
+    condition: string;
+    status: string;
+    notes: string;        // controlled string
+    photo_url: string | null;
+  };
+
+  const [editingBike, setEditingBike] = useState<Bike | null>(null);
+  const [editDraft, setEditDraft] = useState<BikeDraft | null>(null);
+  const [editNotesTouched, setEditNotesTouched] = useState(false);
+  const [editPhoto, setEditPhoto] = useState<File | null>(null);
+  const [editUploading, setEditUploading] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  // Open/Close helpers
   const openEditModal = (bike: Bike) => {
     setEditingBike(bike);
-    setEditBikeId(bike.bike_id);
-    setEditType(bike.type);
-    setEditBrandModel(bike.brand_model);
-    setEditSize(bike.size);
-    setEditCondition(bike.condition);
-    setEditStatus(bike.status);
+    setEditDraft({
+      bike_id: bike.bike_id || "",
+      type: bike.type || "",
+      brand_model: bike.brand_model || "",
+      size: bike.size || "",
+      condition: bike.condition || "",
+      status: bike.status || "",
+      notes: bike.notes ?? "",     // auto-populate notes
+      photo_url: bike.photo_url ?? null,
+    });
+    setEditNotesTouched(false);
+    setEditPhoto(null);
     setShowEditModal(true);
   };
 
+  const closeEditModal = () => {
+    setShowEditModal(false);
+    setEditingBike(null);
+    setEditDraft(null);
+    setEditPhoto(null);
+    setEditNotesTouched(false);
+  };
+
+  // Edit Bike: just overwrite the same fixed path with upsert=true and update photo_url
   const saveEditBike = async () => {
-    let photoUrl = editingBike.photo_url || null;
-    if (editPhoto) {
-      try {
+    if (!editingBike || !editDraft) return;
+
+    let photo_url = editDraft.photo_url;
+
+    try {
+      if (editPhoto) {
         setEditUploading(true);
-        const ext = editPhoto.name.split(".").pop();
-        const fileName = `${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage
+        const path = getBikePhotoPath(editingBike.id);
+        const { error: uploadErr } = await supabase.storage
           .from("bike-photos")
-          .upload(fileName, editPhoto);
-        if (uploadError) throw uploadError;
-        try {
-          const { data: publicUrlData } = await supabase.storage
-            .from("bike-photos")
-            .getPublicUrl(fileName);
-          photoUrl = publicUrlData?.publicUrl || null;
-        } catch (err: unknown) {
-          setMessage(
-            (lang === "en"
-              ? "Error uploading photo: "
-              : "Error al subir la foto: ") + (err instanceof Error ? err.message : String(err))
-          );
-          console.error("Error uploading photo:", err);
-          return;
-        }
-      } catch (err: unknown) {
-        setMessage(
-          (lang === "en"
-            ? "Error uploading photo: "
-            : "Error subiendo foto: ") + getErrorMessage(err)
-        );
-        return;
-      } finally {
-        setEditUploading(false);
+          .upload(path, editPhoto, { upsert: true, cacheControl: "0", contentType: editPhoto.type });
+        if (uploadErr) throw uploadErr;
+        photo_url = getPublicUrlWithVersion(path);
       }
+    } catch (err: unknown) {
+      setMessage((lang === "en" ? "Error uploading photo: " : "Error subiendo foto: ") + (err instanceof Error ? err.message : String(err)));
+      setEditUploading(false);
+      return;
+    } finally {
+      setEditUploading(false);
     }
+
+    // If notes were not touched, keep original notes to avoid accidental erase
+    const notesToSave = editNotesTouched ? editDraft.notes : (editingBike.notes ?? "");
 
     const { error } = await supabase
       .from("bikes")
       .update({
-        bike_id: editBikeId,
-        type: editType,
-        brand_model: editBrandModel,
-        size: editSize,
-        condition: editCondition,
-        status: editStatus,
-        notes: editNotes,
-        photo_url: photoUrl,
+        bike_id: editDraft.bike_id,
+        type: editDraft.type,
+        brand_model: editDraft.brand_model,
+        size: editDraft.size,
+        condition: editDraft.condition,
+        status: editDraft.status,
+        notes: notesToSave,
+        photo_url,
       })
       .eq("id", editingBike.id);
 
-    if (error)
+    if (error) {
+      setMessage((lang === "en" ? "Error updating bike: " : "Error actualizando bicicleta: ") + error.message);
+      return;
+    }
+
+    await mutate();
+    closeEditModal();
+    setMessage(lang === "en" ? "Bike updated!" : "¡Bicicleta actualizada!");
+  };
+
+  // =====================
+  // Image Upload Handler
+  // =====================
+  // const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  //   const file = event.target.files?.[0];
+  //   if (!file) return;
+
+  //   // Set options for compression and resizing
+  //   const options = {
+  //     maxSizeMB: 0.3,           // Target max size in MB (e.g. 300 KB)
+  //     maxWidthOrHeight: 1200,   // Resize to max 1200px width or height
+  //     useWebWorker: true,
+  //   };
+
+  //   try {
+  //     const compressedFile = await imageCompression(file, options);
+
+  //     // Now upload compressedFile to Supabase Storage
+  //     // await supabase.storage.from('your-bucket').upload('path', compressedFile);
+
+  //   } catch (error) {
+  //     console.error("Image compression error:", error);
+  //   }
+  // };
+
+  // Compressed photo handler
+  const handleCompressedPhoto = async (file: File, setter: (f: File | null) => void) => {
+    const options = {
+      maxSizeMB: 0.3,
+      maxWidthOrHeight: 1200,
+      useWebWorker: true,
+    };
+    try {
+      const compressedFile = await imageCompression(file, options);
+      setter(compressedFile);
+    } catch (error) {
       setMessage(
         (lang === "en"
-          ? "Error updating bike: "
-          : "Error actualizando bicicleta: ") + error.message
+          ? "Image compression error: "
+          : "Error de compresión de imagen: ") + (error instanceof Error ? error.message : String(error))
       );
-    else {
-      setMessage(lang === "en" ? "Bike updated!" : "Bicicleta actualizada!");
-      setEditingBike(null);
-      setShowEditModal(false);
-      mutate();
+      setter(null);
     }
   };
 
@@ -383,12 +504,17 @@ export default function BikesPage() {
                     ? "Select Size (BB–Seatpost Height)"
                     : "Seleccionar Tamaño (Pedalier–Tubo de Sillín)"}
                 </option>
-                <option value="XS">XS (≈ 38–42 cm)</option>
-                <option value="S">S (≈ 43–46 cm)</option>
-                <option value="M">M (≈ 47–50 cm)</option>
-                <option value="L">L (≈ 51–54 cm)</option>
-                <option value="XL">XL (≈ 55–58 cm)</option>
-                <option value="XXL">XXL (≈ 59–62 cm)</option>
+                {type && sizingGuides[type]
+                  ? Object.entries(sizingGuides[type]).map(([key, val]) => (
+                      <option key={key} value={key}>
+                        {key} {val !== "No standard" ? `(${val})` : ""}
+                      </option>
+                    ))
+                  : ["XS", "S", "M", "L", "XL", "XXL"].map(key => (
+                      <option key={key} value={key}>
+                        {key}
+                      </option>
+                    ))}
               </select>
               <select
                 value={status}
@@ -419,7 +545,15 @@ export default function BikesPage() {
                 type="file"
                 accept="image/*"
                 capture="environment" // This hints mobile browsers to use the rear camera
-                onChange={(e) => setPhoto(e.target.files?.[0] || null)}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0] || null;
+                  if (!file) {
+                    setPhoto(null);
+                    return;
+                  }
+                  // Compress and resize before setting photo
+                  await handleCompressedPhoto(file, setPhoto);
+                }}
                 className="border px-3 py-2 rounded bg-gray-50 w-full"
               />
               <button
@@ -490,6 +624,18 @@ export default function BikesPage() {
                     <p className="text-sm font-medium mb-1">
                       {bike.type} | {bike.size}
                     </p>
+                    {bike.size && (
+                      <p className="text-xs text-gray-500 mb-1">
+                        {bike.type === "Childrens"
+                          ? lang === "en"
+                            ? `Recommended: ${sizeToHeightOrAge[`Childrens-${bike.size}`]?.age || "Ages 3–13"}`
+                            : `Recomendado: ${sizeToHeightOrAge[`Childrens-${bike.size}`]?.age || "3–13 años"}`
+                          : lang === "en"
+                          ? `Recommended height: ${sizeToHeightOrAge[bike.size]?.height || ""}`
+                          : `Altura recomendada: ${sizeToHeightOrAge[bike.size]?.height || ""}`
+                        }
+                      </p>
+                    )}
                     <p
                       className={`text-sm font-medium mb-2 ${
                         bike.status === "Disponible"
@@ -534,125 +680,147 @@ export default function BikesPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex justify-center mt-6 gap-2">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                (page) => (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={`px-3 py-1 rounded ${
-                      page === currentPage
-                        ? "bg-blue-600 text-white"
-                        : "bg-gray-200"
-                    }`}
-                  >
-                    {page}
-                  </button>
-                )
-              )}
+            <div className="flex justify-center items-center gap-2 mt-6" role="navigation" aria-label="Pagination">
+              <button
+                type="button" // important: prevent form submit
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50"
+              >
+                {lang === "en" ? "Previous" : "Anterior"}
+              </button>
+              <span className="font-semibold">
+                {lang === "en" ? "Page" : "Página"} {page} / {totalPages}
+              </span>
+              <button
+                type="button" // important: prevent form submit
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50"
+              >
+                {lang === "en" ? "Next" : "Siguiente"}
+              </button>
             </div>
           )}
 
           {/* Edit Modal */}
-          {showEditModal && editingBike && (
-            <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 w-full max-w-md relative">
+          {showEditModal && editingBike && editDraft && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+              <div key={editingBike.id} className="bg-white rounded-lg p-6 w/full max-w-md">
                 <h2 className="text-xl font-semibold mb-4">
                   {lang === "en" ? "Edit Bike" : "Editar Bicicleta"}
                 </h2>
+
                 <input
                   type="text"
                   placeholder="Bike ID"
-                  value={editBikeId}
-                  onChange={(e) => setEditBikeId(e.target.value)}
+                  value={editDraft.bike_id}
+                  onChange={(e) => setEditDraft(d => d ? { ...d, bike_id: e.target.value } : d)}
                   className="border px-3 py-2 rounded w-full mb-3"
                 />
+
                 <input
                   type="text"
                   placeholder={lang === "en" ? "Brand/Model" : "Marca/Modelo"}
-                  value={editBrandModel}
-                  onChange={(e) => setEditBrandModel(e.target.value)}
+                  value={editDraft.brand_model}
+                  onChange={(e) => setEditDraft(d => d ? { ...d, brand_model: e.target.value } : d)}
                   className="border px-3 py-2 rounded w-full mb-3"
                 />
-                <input
-                  type="text"
-                  placeholder={lang === "en" ? "Type" : "Tipo"}
-                  value={editType}
-                  onChange={(e) => setEditType(e.target.value)}
-                  className="border px-3 py-2 rounded w-full mb-3"
-                />
-                <input
-                  type="text"
-                  placeholder={lang === "en" ? "Size" : "Tamaño"}
-                  value={editSize}
-                  onChange={(e) => setEditSize(e.target.value)}
-                  className="border px-3 py-2 rounded w-full mb-3"
-                />
+
                 <select
-                  value={editStatus}
-                  onChange={(e) => setEditStatus(e.target.value)}
+                  value={editDraft.type}
+                  onChange={(e) => setEditDraft(d => d ? { ...d, type: e.target.value } : d)}
                   className="border px-3 py-2 rounded w-full mb-3"
                 >
-                  <option value="Disponible">
-                    {lang === "en" ? "Available" : "Disponible"}
-                  </option>
-                  <option value="En uso">
-                    {lang === "en" ? "In Use" : "En uso"}
-                  </option>
+                  <option value="">{lang === "en" ? "Select Type" : "Seleccionar Tipo"}</option>
+                  <option value="Hybrid">{lang === "en" ? "Hybrid" : "Híbrida"}</option>
+                  <option value="Mountain">{lang === "en" ? "Mountain" : "Montaña"}</option>
+                  <option value="Gravel">{lang === "en" ? "Gravel" : "Grava"}</option>
+                  <option value="Folding">{lang === "en" ? "Folding" : "Plegable"}</option>
+                  <option value="BMX">BMX</option>
+                  <option value="Childrens">{lang === "en" ? "Childrens" : "Infantil"}</option>
+                  <option value="Road">{lang === "en" ? "Road" : "Carretera"}</option>
                 </select>
+
                 <select
-                  value={editCondition}
-                  onChange={(e) => setEditCondition(e.target.value)}
+                  value={editDraft.size}
+                  onChange={(e) => setEditDraft(d => d ? { ...d, size: e.target.value } : d)}
                   className="border px-3 py-2 rounded w-full mb-3"
                 >
-                  <option value="Good">
-                    {lang === "en" ? "Good" : "Bueno"}
-                  </option>
-                  <option value="Needs Maintenance">
+                  <option value="">
                     {lang === "en"
-                      ? "Needs Maintenance"
-                      : "Necesita Mantenimiento"}
+                      ? "Select Size (BB–Seatpost Height)"
+                      : "Seleccionar Tamaño (Pedalier–Tubo de Sillín)"}
+                  </option>
+                  {editDraft.type && sizingGuides[editDraft.type]
+                    ? Object.entries(sizingGuides[editDraft.type]).map(([key, val]) => (
+                        <option key={key} value={key}>
+                          {key} {val !== "No standard" ? `(${val})` : ""}
+                        </option>
+                      ))
+                    : ["XS", "S", "M", "L", "XL", "XXL"].map(key => (
+                        <option key={key} value={key}>{key}</option>
+                      ))}
+                </select>
+
+                <select
+                  value={editDraft.status}
+                  onChange={(e) => setEditDraft(d => d ? { ...d, status: e.target.value } : d)}
+                  className="border px-3 py-2 rounded w-full mb-3"
+                >
+                  <option value="Disponible">{lang === "en" ? "Available" : "Disponible"}</option>
+                  <option value="En uso">{lang === "en" ? "In Use" : "En uso"}</option>
+                </select>
+
+                <select
+                  value={editDraft.condition}
+                  onChange={(e) => setEditDraft(d => d ? { ...d, condition: e.target.value } : d)}
+                  className="border px-3 py-2 rounded w-full mb-3"
+                >
+                  <option value="Good">{lang === "en" ? "Good" : "Bueno"}</option>
+                  <option value="Needs Maintenance">
+                    {lang === "en" ? "Needs Maintenance" : "Necesita Mantenimiento"}
                   </option>
                 </select>
-                <input
-                  type="text"
-                  placeholder={lang === "en" ? "Notes" : "Notas"}
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  className="border px-3 py-2 rounded w-full mb-3"
+
+                <label className="block text-sm font-medium mb-1">
+                  {lang === "en" ? "Notes" : "Notas"}
+                </label>
+                <textarea
+                  value={editDraft.notes}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setEditDraft(d => d ? { ...d, notes: v } : d);
+                    setEditNotesTouched(true);
+                  }}
+                  className="border px-3 py-2 rounded w-full mb-4 min-h-[80px]"
+                  placeholder={lang === "en" ? "Notes..." : "Notas..."}
                 />
+
                 <input
                   type="file"
                   accept="image/*"
                   capture="environment"
-                  onChange={(e) => setEditPhoto(e.target.files?.[0] || null)}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0] || null;
+                    if (!file) { setEditPhoto(null); return; }
+                    await handleCompressedPhoto(file, setEditPhoto);
+                  }}
                   className="border px-3 py-2 rounded w-full mb-4"
                 />
+
                 <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setEditingBike(null)}
-                    className="px-4 py-2 rounded bg-gray-300 hover:bg-gray-400"
-                  >
+                  <button onClick={closeEditModal} className="px-4 py-2 rounded bg-gray-300 hover:bg-gray-400">
                     {lang === "en" ? "Cancel" : "Cancelar"}
                   </button>
-                  <button
-                    onClick={saveEditBike}
-                    disabled={editUploading}
-                    className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
-                  >
-                    {editUploading
-                      ? lang === "en"
-                        ? "Saving..."
-                        : "Guardando..."
-                      : lang === "en"
-                      ? "Save"
-                      : "Guardar"}
+                  <button onClick={saveEditBike} disabled={editUploading} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">
+                    {editUploading ? (lang === "en" ? "Saving..." : "Guardando...") : (lang === "en" ? "Save" : "Guardar")}
                   </button>
                 </div>
               </div>
             </div>
-          )}
-        </div>
+          )        
+        }</div>
       </div>
     </Layout>
   );

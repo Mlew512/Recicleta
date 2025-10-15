@@ -9,6 +9,7 @@ import { useLanguage } from "@/context/LanguageContext";
 
 function SplashPage() {
   const { lang, toggleLang } = useLanguage();
+  const router = useRouter();
 
   const mission = {
     en: (
@@ -38,6 +39,15 @@ function SplashPage() {
         <Link href="/register" className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 w-full text-center">
           {lang === "en" ? "Fill Out Rental Application" : "Completar Solicitud de Alquiler"}
         </Link>
+      </div>
+      {/* Add Available Bikes Button */}
+      <div className="flex justify-center mb-6 w-full max-w-xs mx-auto">
+        <button
+          onClick={() => router.push("/available-bikes")}
+          className="bg-green-700 text-white px-4 py-2 rounded shadow hover:bg-green-800 w-full text-center transition"
+        >
+          {lang === "en" ? "View Available Bikes" : "Ver bicicletas disponibles"}
+        </button>
       </div>
       <div className="flex flex-col items-center gap-2 mt-6">
         <span className="font-semibold">{lang === "en" ? "Follow us:" : "Síguenos:"}</span>
@@ -91,8 +101,9 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     };
   }, []);
 
-  // Allow access to /login and /register without authentication
-  if (router.pathname === "/login" || router.pathname === "/register") return <>{children}</>;
+  // Allow access to /login, /register, and /available-bikes without authentication
+  const publicRoutes = ["/login", "/register", "/available-bikes"];
+  if (publicRoutes.includes(router.pathname)) return <>{children}</>;
   if (loading) return <div>Loading...</div>;
   if (!user) return <SplashPage />;
   return <>{children}</>;

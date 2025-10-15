@@ -1,7 +1,7 @@
-import Layout from '@/components/Layout'
-import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '@/lib/supabaseClient'
-import { Database } from '@/lib/database.types'
+import Layout from "@/components/Layout";
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { Database } from "@/lib/database.types";
 import { useLanguage } from "@/context/LanguageContext";
 import { mutate } from "swr";
 import { useRouter } from "next/router";
@@ -38,12 +38,13 @@ type Rental = {
     type?: string; // <-- Add this line
     // ...other bike fields...
   };
+  notes?: string; // <-- New field for rental notes
   // ...other fields if needed...
 };
 
-type Bike = Database['public']['Tables']['bikes']['Row']
-type User = Database['public']['Tables']['users']['Row']
-type RentalType = 'adult' | 'child' | 'charity' | ''
+type Bike = Database["public"]["Tables"]["bikes"]["Row"];
+type User = Database["public"]["Tables"]["users"]["Row"];
+type RentalType = "adult" | "child" | "charity" | "";
 
 function formatDate(dateStr: string, lang: string) {
   if (!dateStr) return "-";
@@ -55,34 +56,49 @@ function formatDate(dateStr: string, lang: string) {
   });
 }
 
+// Add this mapping near the top of your file:
+const bikeTypeLabels: Record<string, { en: string; es: string }> = {
+  Hybrid: { en: "Hybrid", es: "Híbrida" },
+  Mountain: { en: "Mountain", es: "Montaña" },
+  Gravel: { en: "Gravel", es: "Grava" },
+  Folding: { en: "Folding", es: "Plegable" },
+  BMX: { en: "BMX", es: "BMX" },
+  Childrens: { en: "Childrens", es: "Infantil" },
+  Road: { en: "Road", es: "Carretera" },
+};
+
 export default function RentalsPage() {
   const router = useRouter();
   const selectedBikeFromQuery = router.query.bike as string;
   const { lang, toggleLang } = useLanguage();
-  const [rentals, setRentals] = useState<Rental[]>([])
-  const [bikes, setBikes] = useState<Bike[]>([])
-  const [users, setUsers] = useState<User[]>([])
+  const [rentals, setRentals] = useState<Rental[]>([]);
+  const [bikes, setBikes] = useState<Bike[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [selectedBike, setSelectedBike] = useState<string>(selectedBikeFromQuery || "")
-  const [selectedUser, setSelectedUser] = useState<string>('')
-  const [rentalType, setRentalType] = useState<RentalType>('')
-  const [search, setSearch] = useState('')
-  const [bikeSearch, setBikeSearch] = useState('')
-  const [userSearch, setUserSearch] = useState('')
-  const [message, setMessage] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
-  const rentalsPerPage = 10
+  const [selectedBike, setSelectedBike] = useState<string>(
+    selectedBikeFromQuery || ""
+  );
+  const [selectedUser, setSelectedUser] = useState<string>("");
+  const [rentalType, setRentalType] = useState<RentalType>("");
+  const [search, setSearch] = useState("");
+  const [bikeSearch, setBikeSearch] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const rentalsPerPage = 10;
   const [editingRentalId, setEditingRentalId] = useState<string | null>(null);
   const [editBikeId, setEditBikeId] = useState<string>("");
+  const [editNotes, setEditNotes] = useState<string>("");
 
   // Use useCallback to memoize loadData
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: bikesData }, { data: usersData }, { data: rentalsData }] = await Promise.all([
-        supabase.from('bikes').select('*'),
-        supabase.from('users').select('*'),
-        supabase.from('rentals').select(`
+      const [{ data: bikesData }, { data: usersData }, { data: rentalsData }] =
+        await Promise.all([
+          supabase.from("bikes").select("*"),
+          supabase.from("users").select("*"),
+          supabase.from("rentals").select(`
           *,
           bikes (
             id, bike_id, type, status, brand_model, size, condition
@@ -90,15 +106,15 @@ export default function RentalsPage() {
           users (
             id, name, email, dni
           )
-        `)
-      ]);
+        `),
+        ]);
 
       if (bikesData) setBikes(bikesData);
       if (usersData) setUsers(usersData);
       if (rentalsData) setRentals(rentalsData);
     } catch (err: unknown) {
-      console.error('Error loading data:', err);
-      setMessage('Error loading data');
+      console.error("Error loading data:", err);
+      setMessage("Error loading data");
     } finally {
       setLoading(false);
     }
@@ -110,10 +126,13 @@ export default function RentalsPage() {
   }, [loadData]);
 
   // Example rental fee logic for different bike types
-  const getRentalFee = (bikeType: string | undefined, rentalType: RentalType): number => {
+  const getRentalFee = (
+    bikeType: string | undefined,
+    rentalType: RentalType
+  ): number => {
     // For charity rentals
     if (rentalType === "charity") return 0;
-    
+
     // Initial rental period is free (covered by deposit)
     // This will be adjusted when the rental is closed based on duration
     return 0;
@@ -127,16 +146,18 @@ export default function RentalsPage() {
 
   const startRental = async () => {
     if (!selectedBike || !selectedUser || !rentalType) {
-      setMessage('Please select a bike, user, and rental type.')
-      return
+      setMessage("Please select a bike, user, and rental type.");
+      return;
     }
 
     // Get current user email
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const userEmail = user?.email || null;
 
-    const deposit = rentalType === "adult" ? 50 : 
-                   rentalType === "child" ? 30 : 0;
+    const deposit =
+      rentalType === "adult" ? 50 : rentalType === "child" ? 30 : 0;
 
     const { error } = await supabase.from("rentals").insert([
       {
@@ -150,39 +171,42 @@ export default function RentalsPage() {
         total_cost: 0, // Will be calculated when closed
         user_type: rentalType || "adult",
         created_by_email: userEmail, // <-- This will now work!
+        notes: message || "", // <-- Include notes
       },
     ]);
 
     if (error) {
-      setMessage('Error starting rental: ' + error.message)
-      return
+      setMessage("Error starting rental: " + error.message);
+      return;
     }
 
     await supabase
-      .from('bikes')
-      .update({ status: 'En uso' })
-      .eq('id', selectedBike);
+      .from("bikes")
+      .update({ status: "En uso" })
+      .eq("id", selectedBike);
 
-    setMessage('Rental started successfully!')
+    setMessage("Rental started successfully!");
 
     await loadData();
 
-    setSelectedBike('')
-    setSelectedUser('')
-    setRentalType('')
+    setSelectedBike("");
+    setSelectedUser("");
+    setRentalType("");
 
     mutate("/api/revenue");
-  }
+  };
 
   const closeRental = async (rental: Rental) => {
-    const confirmed = window.confirm('Are you sure you want to close this rental?')
-    if (!confirmed) return
+    const confirmed = window.confirm(
+      "Are you sure you want to close this rental?"
+    );
+    if (!confirmed) return;
 
-    const damageInput = window.prompt('Enter damage cost in € (if any):', '0')
-    const damageCost = parseFloat(damageInput || '0')
+    const damageInput = window.prompt("Enter damage cost in € (if any):", "0");
+    const damageCost = parseFloat(damageInput || "0");
     if (isNaN(damageCost) || damageCost < 0) {
-      setMessage('Invalid damage cost entered.')
-      return
+      setMessage("Invalid damage cost entered.");
+      return;
     }
 
     const start = new Date(rental.start_date);
@@ -193,20 +217,23 @@ export default function RentalsPage() {
 
     // Calculate number of days between start and end dates
     const msPerDay = 1000 * 60 * 60 * 24;
-    const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / msPerDay));
+    const days = Math.max(
+      1,
+      Math.ceil((end.getTime() - start.getTime()) / msPerDay)
+    );
 
     // Calculate number of 3-month periods (minimum 1)
     const periods = Math.max(1, Math.ceil(days / 90)); // 90 days = ~3 months
 
     const isChildRental =
-      rental.user_type === 'child' ||
-      rental.bikes?.type?.toLowerCase() === 'childrens';
+      rental.user_type === "child" ||
+      rental.bikes?.type?.toLowerCase() === "childrens";
 
     if (isChildRental) {
       // Children's bikes: 5 euro per 3-month period, 30 euro deposit
       totalCost = periods * 5;
       refund = Math.max(30 - totalCost - damageCost, 0);
-    } else if (rental.user_type === 'charity') {
+    } else if (rental.user_type === "charity") {
       totalCost = 0;
       refund = 0;
     } else {
@@ -221,45 +248,50 @@ export default function RentalsPage() {
       refund = Math.max(refund - damageCost, 0);
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const closerEmail = user?.email || null;
 
     const { error: updateError } = await supabase
-      .from('rentals')
+      .from("rentals")
       .update({
         end_date: end.toISOString(),
         total_cost: totalCost,
         deposit_refund: refund,
-        status: 'Completado',
+        status: "Completado",
         closed_by_email: closerEmail,
       })
-      .eq('id', rental.id);
+      .eq("id", rental.id);
 
     if (updateError) throw updateError;
 
-    await supabase.from('bikes').update({ status: 'Disponible' }).eq('id', rental.bike_id)
+    await supabase
+      .from("bikes")
+      .update({ status: "Disponible" })
+      .eq("id", rental.bike_id);
 
     setMessage(
       `Rental closed. ${
-        rental.user_type === 'charity'
-          ? 'Charity rental — no charges.'
+        rental.user_type === "charity"
+          ? "Charity rental — no charges."
           : `Damage: €${damageCost}, Refund: €${refund}`
       }`
-    )
+    );
 
     await loadData();
-  }
+  };
 
   const handleEditBike = (rental: Rental) => {
     setEditingRentalId(rental.id);
     setEditBikeId(rental.bike_id);
+    setEditNotes(rental.notes || "");
   };
 
   const handleSaveBike = async (rental: Rental) => {
-    // Update rental with new bike_id
     await supabase
       .from("rentals")
-      .update({ bike_id: editBikeId })
+      .update({ bike_id: editBikeId, notes: editNotes })
       .eq("id", rental.id);
 
     // Set new bike as "En uso"
@@ -292,20 +324,55 @@ export default function RentalsPage() {
     setEditingRentalId(null);
   };
 
+  // Improve handleDeleteRental to ensure UI updates
   const handleDeleteRental = async (rentalId: string) => {
-    const confirmed = window.confirm(lang === "en"
-      ? "Are you sure you want to delete this rental?"
-      : "¿Seguro que quieres eliminar este alquiler?");
-    if (!confirmed) return;
-
-    const { error } = await supabase.from("rentals").delete().eq("id", rentalId);
-    if (error) {
-      setMessage(lang === "en" ? "Error deleting rental: " : "Error eliminando alquiler: " + error.message);
-    } else {
-      setMessage(lang === "en" ? "Rental deleted." : "Alquiler eliminado.");
-      await loadData();
+    if (!confirm(lang === "en" ? "Are you sure you want to delete this rental?" : "¿Estás seguro de que quieres eliminar este alquiler?")) {
+      return;
     }
-    setEditingRentalId(null);
+
+    try {
+      setMessage(lang === "en" ? "Deleting..." : "Eliminando...");
+      
+      // Find the bike_id first to update its status after deletion
+      const { data: rental } = await supabase
+        .from("rentals")
+        .select("bike_id")
+        .eq("id", rentalId)
+        .single();
+    
+      const bikeId = rental?.bike_id;
+    
+      // Delete the rental
+      const { error: deleteError } = await supabase
+        .from("rentals")
+        .delete()
+        .eq("id", rentalId);
+    
+      if (deleteError) throw deleteError;
+    
+      // Update the bike status to Disponible
+      if (bikeId) {
+        const { error: updateError } = await supabase
+          .from("bikes")
+          .update({ status: "Disponible" })
+          .eq("id", bikeId);
+      
+        if (updateError) {
+          console.error("Error updating bike status:", updateError);
+        }
+      }
+    
+      setMessage(lang === "en" ? "Rental deleted successfully!" : "¡Alquiler eliminado con éxito!");
+    
+      // Update UI immediately (optimistic UI update)
+      setRentals(prevRentals => prevRentals.filter(r => r.id !== rentalId));
+    
+      // Also refresh the data to ensure consistency
+      loadData();
+    } catch (error: unknown) {
+      console.error("Delete error:", error);
+      setMessage(lang === "en" ? "Error deleting rental." : "Error al eliminar el alquiler.");
+    }
   };
 
   const filteredRentals = rentals.filter((r: Rental) => {
@@ -316,7 +383,7 @@ export default function RentalsPage() {
       r.users?.dni?.toLowerCase().includes(q) ||
       r.users?.email?.toLowerCase().includes(q)
     );
-  })
+  });
 
   // Sort: active first, then by start_date descending (newest first)
   const sortedRentals = [...filteredRentals].sort((a, b) => {
@@ -329,22 +396,23 @@ export default function RentalsPage() {
 
   // Use sortedRentals for pagination
   const totalPages = Math.ceil(sortedRentals.length / rentalsPerPage);
-  const currentRentals = sortedRentals.slice((page - 1) * rentalsPerPage, page * rentalsPerPage);
+  const currentRentals = sortedRentals.slice(
+    (page - 1) * rentalsPerPage,
+    page * rentalsPerPage
+  );
 
   const filteredBikes = bikes.filter(
     (b) =>
-      b.status === 'Disponible' &&
-      (
-        b.bike_id.toLowerCase().includes(bikeSearch.toLowerCase()) ||
-        (b.brand_model?.toLowerCase().includes(bikeSearch.toLowerCase()))
-      )
+      b.status === "Disponible" &&
+      (b.bike_id.toLowerCase().includes(bikeSearch.toLowerCase()) ||
+        b.brand_model?.toLowerCase().includes(bikeSearch.toLowerCase()))
   );
   const filteredUsers = users.filter(
     (u) =>
       u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.dni.toLowerCase().includes(userSearch.toLowerCase()) ||
       u.email.toLowerCase().includes(userSearch.toLowerCase())
-  )
+  );
 
   const labels = {
     title: lang === "en" ? "Bike Rentals" : "Alquiler de Bicicletas",
@@ -358,10 +426,12 @@ export default function RentalsPage() {
     child: lang === "en" ? "Child (€30 deposit)" : "Niño (Depósito €30)",
     charity: lang === "en" ? "Charity (€0 deposit)" : "Caridad (Sin depósito)",
     start: lang === "en" ? "Start Rental" : "Iniciar Alquiler",
-    searchPlaceholder: lang === "en"
-      ? "Search by Bike ID, Name, DNI, or Email"
-      : "Buscar por ID de Bicicleta, Nombre, DNI o Email",
-    noRentals: lang === "en" ? "No rentals found." : "No se encontraron alquileres.",
+    searchPlaceholder:
+      lang === "en"
+        ? "Search by Bike ID, Name, DNI, or Email"
+        : "Buscar por ID de Bicicleta, Nombre, DNI o Email",
+    noRentals:
+      lang === "en" ? "No rentals found." : "No se encontraron alquileres.",
     prev: lang === "en" ? "Prev" : "Anterior",
     next: lang === "en" ? "Next" : "Siguiente",
     page: lang === "en" ? "Page" : "Página",
@@ -398,73 +468,126 @@ export default function RentalsPage() {
           {/* Start New Rental */}
           <div className="bg-white shadow-lg rounded-lg p-6 mb-8">
             <h2 className="text-xl font-semibold mb-4">{labels.startRental}</h2>
-            <div className="grid md:grid-cols-5 gap-3 items-center">
+            <form
+              className="flex flex-wrap gap-3 items-center"
+              onSubmit={(e) => {
+                e.preventDefault();
+                startRental();
+              }}
+            >
               {/* Bike Search */}
-              <div>
+              <div className="relative flex-1 min-w-[180px]">
                 <input
                   type="text"
                   placeholder={labels.searchBike}
-                  value={bikeSearch}
-                  onChange={(e) => setBikeSearch(e.target.value)}
-                  className="border px-3 py-2 w-full rounded mb-1"
+                  value={
+                    selectedBike
+                      ? bikes.find((b) => b.id === selectedBike)?.bike_id +
+                        " – " +
+                        bikes.find((b) => b.id === selectedBike)?.brand_model
+                      : bikeSearch
+                  }
+                  onChange={(e) => {
+                    setBikeSearch(e.target.value);
+                    setSelectedBike("");
+                  }}
+                  className="border px-3 py-2 w-full rounded"
+                  autoComplete="off"
                 />
-                <select
-                  className="border rounded px-3 py-2 w-full"
-                  value={selectedBike}
-                  onChange={(e) => setSelectedBike(e.target.value)}
-                >
-                  <option value="">{labels.selectBike}</option>
-                  {filteredBikes.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.bike_id} – {b.brand_model}
-                    </option>
-                  ))}
-                </select>
+                {bikeSearch && filteredBikes.length > 0 && (
+                  <div className="absolute left-0 right-0 bg-white border rounded shadow mt-1 z-10 max-h-48 overflow-y-auto">
+                    {filteredBikes.map((b) => (
+                      <div
+                        key={b.id}
+                        className="px-3 py-2 cursor-pointer hover:bg-green-100"
+                        onClick={() => {
+                          setSelectedBike(b.id);
+                          setBikeSearch("");
+                        }}
+                      >
+                        <b>{b.bike_id}</b> – {b.brand_model} (
+                        {bikeTypeLabels[b.type]?.[lang] || b.type})
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* User Search */}
-              <div>
+              <div className="relative flex-1 min-w-[180px]">
                 <input
                   type="text"
                   placeholder={labels.searchUser}
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                  className="border px-3 py-2 w-full rounded mb-1"
+                  value={
+                    selectedUser
+                      ? users.find((u) => u.id === selectedUser)?.name +
+                        " (" +
+                        users.find((u) => u.id === selectedUser)?.dni +
+                        ")"
+                      : userSearch
+                  }
+                  onChange={(e) => {
+                    setUserSearch(e.target.value);
+                    setSelectedUser("");
+                  }}
+                  className="border px-3 py-2 w-full rounded"
+                  autoComplete="off"
                 />
-                <select
-                  className="border rounded px-3 py-2 w-full"
-                  value={selectedUser}
-                  onChange={(e) => setSelectedUser(e.target.value)}
-                >
-                  <option value="">{labels.selectUser}</option>
-                  {filteredUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} ({u.dni})
-                    </option>
-                  ))}
-                </select>
+                {userSearch && filteredUsers.length > 0 && (
+                  <div className="absolute left-0 right-0 bg-white border rounded shadow mt-1 z-10 max-h-48 overflow-y-auto">
+                    {filteredUsers.map((u) => (
+                      <div
+                        key={u.id}
+                        className="px-3 py-2 cursor-pointer hover:bg-green-100"
+                        onClick={() => {
+                          setSelectedUser(u.id);
+                          setUserSearch("");
+                        }}
+                      >
+                        <b>{u.name}</b> ({u.dni}) – {u.email}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Rental Type */}
-              <select
-                className="border rounded px-3 py-2 w-full"
-                value={rentalType}
-                onChange={(e) => setRentalType(e.target.value as RentalType)}
-              >
-                <option value="">{labels.selectType}</option>
-                <option value="adult">{labels.adult}</option>
-                <option value="child">{labels.child}</option>
-                <option value="charity">{labels.charity}</option>
-              </select>
+              <div className="flex-1 min-w-[140px]">
+                <select
+                  className="border rounded px-3 py-2 w-full"
+                  value={rentalType}
+                  onChange={(e) => setRentalType(e.target.value as RentalType)}
+                >
+                  <option value="">{labels.selectType}</option>
+                  <option value="adult">{labels.adult}</option>
+                  <option value="child">{labels.child}</option>
+                  <option value="charity">{labels.charity}</option>
+                </select>
+              </div>
+
+              {/* Notes Input */}
+              <div className="flex-1 min-w-[180px]">
+                <input
+                  type="text"
+                  placeholder={
+                    lang === "en" ? "Notes (optional)" : "Notas (opcional)"
+                  }
+                  value={message || ""}
+                  onChange={(e) => setMessage(e.target.value)}
+                  className="border px-3 py-2 rounded w-full"
+                />
+              </div>
 
               {/* Start Button */}
-              <button
-                onClick={startRental}
-                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 col-span-2 md:col-span-1"
-              >
-                {labels.start}
-              </button>
-            </div>
+              <div>
+                <button
+                  type="submit"
+                  className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+                >
+                  {labels.start}
+                </button>
+              </div>
+            </form>
           </div>
 
           {/* Search + Rentals Table */}
@@ -481,18 +604,49 @@ export default function RentalsPage() {
             <table className="min-w-full border border-gray-300">
               <thead className="bg-gray-800 text-white">
                 <tr>
-                  <th className="p-2 border text-left" style={{ width: "60px" }}>{lang === "en" ? "Edit" : "Editar"}</th>
+                  <th
+                    className="p-2 border text-left"
+                    style={{ width: "60px" }}
+                  >
+                    {lang === "en" ? "Edit" : "Editar"}
+                  </th>
                   <th className="p-2 border">Bike</th>
                   <th className="p-2 border">User</th>
                   <th className="p-2 border">Start</th>
                   <th className="p-2 border">End</th>
                   <th className="p-2 border">Type</th>
                   <th className="p-2 border">Deposit</th>
-                  <th className="p-2 border">{lang === "en" ? "Cost (€)" : "Costo (€)"}</th>
-                  <th className="p-2 border">{lang === "en" ? "Refund (€)" : "Reembolso (€)"}</th>
-                  <th className="p-2 border text-xs font-normal" style={{ width: "90px" }}>Check-in<br /><span className="text-xs text-gray-500">(user)</span></th>
-                  <th className="p-2 border text-xs font-normal" style={{ width: "90px" }}>Check-out<br /><span className="text-xs text-gray-500">(user)</span></th>
-                  <th className="p-2 border text-right" style={{ width: "120px" }}>Actions</th>
+                  <th className="p-2 border">
+                    {lang === "en" ? "Cost (€)" : "Costo (€)"}
+                  </th>
+                  <th className="p-2 border">
+                    {lang === "en" ? "Refund (€)" : "Reembolso (€)"}
+                  </th>
+                  <th className="p-2 border">
+                    {lang === "en" ? "Notes" : "Notas"}
+                  </th>
+                  <th
+                    className="p-2 border text-xs font-normal"
+                    style={{ width: "90px" }}
+                  >
+                    Check-in
+                    <br />
+                    <span className="text-xs text-gray-500">(user)</span>
+                  </th>
+                  <th
+                    className="p-2 border text-xs font-normal"
+                    style={{ width: "90px" }}
+                  >
+                    Check-out
+                    <br />
+                    <span className="text-xs text-gray-500">(user)</span>
+                  </th>
+                  <th
+                    className="p-2 border text-right"
+                    style={{ width: "120px" }}
+                  >
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -502,10 +656,16 @@ export default function RentalsPage() {
                     <td className="border p-2 text-left">
                       {editingRentalId === rental.id ? (
                         <>
-                          <button className="bg-green-600 text-white px-2 py-1 rounded mr-2" onClick={() => handleSaveBike(rental)}>
+                          <button
+                            className="bg-green-600 text-white px-2 py-1 rounded mr-2"
+                            onClick={() => handleSaveBike(rental)}
+                          >
                             {lang === "en" ? "Save" : "Guardar"}
                           </button>
-                          <button className="bg-gray-400 text-white px-2 py-1 rounded mr-2" onClick={handleCancelEdit}>
+                          <button
+                            className="bg-gray-400 text-white px-2 py-1 rounded mr-2"
+                            onClick={handleCancelEdit}
+                          >
                             {lang === "en" ? "Cancel" : "Cancelar"}
                           </button>
                           <button
@@ -516,7 +676,10 @@ export default function RentalsPage() {
                           </button>
                         </>
                       ) : (
-                        <button className="bg-blue-600 text-white px-2 py-1 rounded" onClick={() => handleEditBike(rental)}>
+                        <button
+                          className="bg-blue-600 text-white px-2 py-1 rounded"
+                          onClick={() => handleEditBike(rental)}
+                        >
                           {lang === "en" ? "Edit" : "Editar"}
                         </button>
                       )}
@@ -526,13 +689,26 @@ export default function RentalsPage() {
                         <select
                           className="border px-2 py-1 rounded w-full"
                           value={editBikeId}
-                          onChange={e => setEditBikeId(e.target.value)}
+                          onChange={(e) => setEditBikeId(e.target.value)}
                         >
+                          <option value="">Select a bike</option>
                           {bikes
-                            .filter(bike => bike.status !== "En uso") // Only show bikes not in use
-                            .map(bike => (
-                              <option key={bike.id} value={bike.id}>
-                                {bike.brand_model} ({bike.bike_id})
+                            .filter(
+                              (b) =>
+                                b.status === "Disponible" ||
+                                b.id === rental.bike_id
+                            )
+                            .sort((a, b) =>
+                              a.id === rental.bike_id
+                                ? -1
+                                : b.id === rental.bike_id
+                                ? 1
+                                : 0
+                            ) // Put current bike first
+                            .map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.brand_model} • {b.type} • {b.size}
+                                {b.id === rental.bike_id ? " • *current" : ""}
                               </option>
                             ))}
                         </select>
@@ -540,28 +716,57 @@ export default function RentalsPage() {
                         rental.bikes?.brand_model || rental.bike_id
                       )}
                     </td>
-                    <td className="border p-2">{rental.users?.name || rental.user_id}</td>
-                    <td className="border p-2">{formatDate(rental.start_date, lang)}</td>
-                    <td className="border p-2">{formatDate(rental.end_date, lang)}</td>
                     <td className="border p-2">
-                      {(rental.user_type
-                        ? rental.user_type.charAt(0).toUpperCase() + rental.user_type.slice(1)
-                        : lang === "en" ? "Unknown" : "Desconocido")}
+                      {rental.users?.name || rental.user_id}
+                    </td>
+                    <td className="border p-2">
+                      {formatDate(rental.start_date, lang)}
+                    </td>
+                    <td className="border p-2">
+                      {formatDate(rental.end_date, lang)}
+                    </td>
+                    <td className="border p-2">
+                      {rental.user_type
+                        ? rental.user_type.charAt(0).toUpperCase() +
+                          rental.user_type.slice(1)
+                        : lang === "en"
+                        ? "Unknown"
+                        : "Desconocido"}
                     </td>
                     <td className="border p-2">{rental.deposit}</td>
                     <td className="border p-2">{rental.total_cost}</td>
                     <td className="border p-2">{rental.deposit_refund}</td>
-                    <td className="border p-2 text-xs text-gray-600">{rental.created_by_email?.split("@")[0]}</td>
-                    <td className="border p-2 text-xs text-gray-600">{rental.closed_by_email?.split("@")[0]}</td>
-                    <td className="border p-2 text-right">
-                      {editingRentalId !== rental.id && rental.status === "Activo" && (
-                        <button
-                          onClick={() => closeRental(rental)}
-                          className="bg-blue-500 text-white px-3 py-1 rounded"
-                        >
-                          {lang === "en" ? "Return Bike" : "Devolver bici"}
-                        </button>
+                    <td className="border p-2 text-xs text-gray-600">
+                      {editingRentalId === rental.id ? (
+                        <input
+                          type="text"
+                          value={editNotes}
+                          onChange={(e) => setEditNotes(e.target.value)}
+                          className="border px-2 py-1 rounded w-full text-xs"
+                          placeholder={
+                            lang === "en" ? "Edit notes..." : "Editar notas..."
+                          }
+                        />
+                      ) : (
+                        rental.notes || ""
                       )}
+                    </td>
+                    <td className="border p-2 text-xs text-gray-600">
+                      {rental.created_by_email?.split("@")[0]}
+                    </td>
+                    <td className="border p-2 text-xs text-gray-600">
+                      {rental.closed_by_email?.split("@")[0]}
+                    </td>
+                    <td className="border p-2 text-right">
+                      {editingRentalId !== rental.id &&
+                        rental.status === "Activo" && (
+                          <button
+                            onClick={() => closeRental(rental)}
+                            className="bg-blue-500 text-white px-3 py-1 rounded"
+                          >
+                            {lang === "en" ? "Return Bike" : "Devolver bici"}
+                          </button>
+                        )}
                     </td>
                   </tr>
                 ))}
@@ -572,18 +777,32 @@ export default function RentalsPage() {
           {/* Mobile Card Layout */}
           <div className="md:hidden">
             {currentRentals.map((r) => (
-              <div key={r.id} className="bg-white rounded shadow p-4 mb-4 border">
+              <div
+                key={r.id}
+                className="bg-white rounded shadow p-4 mb-4 border"
+              >
                 {/* Renter's name as card title */}
                 <div className="flex justify-between items-center mb-2">
                   <span className="font-bold text-lg">
-                    {r.users?.name || (lang === "en" ? "Unknown user" : "Usuario desconocido")}
+                    {r.users?.name ||
+                      (lang === "en" ? "Unknown user" : "Usuario desconocido")}
                   </span>
-                  <span className="text-xs px-2 py-1 rounded bg-gray-200">{r.status}</span>
+                  <span className="text-xs px-2 py-1 rounded bg-gray-200">
+                    {r.status}
+                  </span>
                 </div>
                 {/* Bike info */}
                 <div className="mb-2">
                   <b>{lang === "en" ? "Bike:" : "Bicicleta:"}</b>{" "}
-                  {r.bikes ? `${r.bikes.brand_model} (${r.bikes.bike_id})` : r.bike_id}
+                  {r.bikes
+                    ? `${r.bikes.brand_model} (${r.bikes.bike_id})${
+                        r.bikes.type
+                          ? " – " +
+                            (bikeTypeLabels[r.bikes.type]?.[lang] ||
+                              r.bikes.type)
+                          : ""
+                      }`
+                    : r.bike_id}
                 </div>
                 {/* Inline Edit Bike */}
                 {editingRentalId === r.id && (
@@ -594,20 +813,35 @@ export default function RentalsPage() {
                     <select
                       className="border px-2 py-1 rounded w-full"
                       value={editBikeId}
-                      onChange={e => setEditBikeId(e.target.value)}
+                      onChange={(e) => setEditBikeId(e.target.value)}
                     >
-                      {bikes.map(bike => (
-                        <option key={bike.id} value={bike.id}>
-                          {bike.brand_model} ({bike.bike_id})
-                        </option>
-                      ))}
+                      <option value="">Select a bike</option>
+                      {bikes
+                        .filter(
+                          (b) =>
+                            b.status === "Disponible" || b.id === r.bike_id
+                        )
+                        .sort((a, b) =>
+                          a.id === r.bike_id
+                            ? -1
+                            : b.id === r.bike_id
+                            ? 1
+                            : 0
+                        ) // Put current bike first
+                        .map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.brand_model} • {b.type} • {b.size}
+                            {b.id === r.bike_id ? " • *current" : ""}
+                          </option>
+                        ))}
                     </select>
                   </div>
                 )}
                 {/* Rental details */}
                 <div className="text-sm mb-2">
                   <div>
-                    <b>{lang === "en" ? "User:" : "Usuario:"}</b> {r.users?.name} ({r.users?.dni})
+                    <b>{lang === "en" ? "User:" : "Usuario:"}</b>{" "}
+                    {r.users?.name} ({r.users?.dni})
                   </div>
                   <div>
                     <b>{lang === "en" ? "Type:" : "Tipo:"}</b> {r.user_type}
@@ -619,22 +853,39 @@ export default function RentalsPage() {
                     <b>{lang === "en" ? "End:" : "Fin:"}</b> {r.end_date || "-"}
                   </div>
                   <div>
-                    <b>{lang === "en" ? "Deposit:" : "Depósito:"}</b> {r.deposit ?? "-"}
+                    <b>{lang === "en" ? "Deposit:" : "Depósito:"}</b>{" "}
+                    {r.deposit ?? "-"}
                   </div>
                   <div>
-                    <b>{lang === "en" ? "Cost:" : "Costo:"}</b> {r.status === "Completado" ? r.total_cost ?? "-" : "-"}
+                    <b>{lang === "en" ? "Cost:" : "Costo:"}</b>{" "}
+                    {r.status === "Completado" ? r.total_cost ?? "-" : "-"}
                   </div>
                   <div>
-                    <b>{lang === "en" ? "Damages:" : "Daños:"}</b> {r.status === "Completado" ? r.damage_cost ?? "-" : "-"}
+                    <b>{lang === "en" ? "Damages:" : "Daños:"}</b>{" "}
+                    {r.status === "Completado" ? r.damage_cost ?? "-" : "-"}
                   </div>
                   <div>
-                    <b>{lang === "en" ? "Refund:" : "Reembolso:"}</b> {r.status === "Completado" ? r.deposit_refund ?? "-" : "-"}
+                    <b>{lang === "en" ? "Refund:" : "Reembolso:"}</b>{" "}
+                    {r.status === "Completado" ? r.deposit_refund ?? "-" : "-"}
                   </div>
                   <div>
-                    <b>{lang === "en" ? "Staff Check-in:" : "Personal ingreso:"}</b> {r.created_by_email || (lang === "en" ? "N/A" : "No disponible")}
+                    <b>
+                      {lang === "en" ? "Staff Check-in:" : "Personal ingreso:"}
+                    </b>{" "}
+                    {r.created_by_email ||
+                      (lang === "en" ? "N/A" : "No disponible")}
                   </div>
                   <div>
-                    <b>{lang === "en" ? "Staff Check-out:" : "Personal egreso:"}</b> {r.closed_by_email || (lang === "en" ? "N/A" : "No disponible")}
+                    <b>
+                      {lang === "en" ? "Staff Check-out:" : "Personal egreso:"}
+                    </b>{" "}
+                    {r.closed_by_email ||
+                      (lang === "en" ? "N/A" : "No disponible")}
+                  </div>
+                  {/* New field for notes */}
+                  <div>
+                    <b>{lang === "en" ? "Notes:" : "Notas:"}</b>{" "}
+                    {r.notes || "-"}
                   </div>
                 </div>
                 {/* Action buttons */}
@@ -698,5 +949,5 @@ export default function RentalsPage() {
         </div>
       </div>
     </Layout>
-  )
+  );
 }
