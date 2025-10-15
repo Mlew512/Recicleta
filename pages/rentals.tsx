@@ -84,6 +84,8 @@ export default function RentalsPage() {
   const [bikeSearch, setBikeSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [notes, setNotes] = useState(""); // Add this state for notes
+
   const [page, setPage] = useState(1);
   const rentalsPerPage = 10;
   const [editingRentalId, setEditingRentalId] = useState<string | null>(null);
@@ -326,52 +328,66 @@ export default function RentalsPage() {
 
   // Improve handleDeleteRental to ensure UI updates
   const handleDeleteRental = async (rentalId: string) => {
-    if (!confirm(lang === "en" ? "Are you sure you want to delete this rental?" : "¿Estás seguro de que quieres eliminar este alquiler?")) {
+    if (
+      !confirm(
+        lang === "en"
+          ? "Are you sure you want to delete this rental?"
+          : "¿Estás seguro de que quieres eliminar este alquiler?"
+      )
+    ) {
       return;
     }
 
     try {
       setMessage(lang === "en" ? "Deleting..." : "Eliminando...");
-      
+
       // Find the bike_id first to update its status after deletion
       const { data: rental } = await supabase
         .from("rentals")
         .select("bike_id")
         .eq("id", rentalId)
         .single();
-    
+
       const bikeId = rental?.bike_id;
-    
+
       // Delete the rental
       const { error: deleteError } = await supabase
         .from("rentals")
         .delete()
         .eq("id", rentalId);
-    
+
       if (deleteError) throw deleteError;
-    
+
       // Update the bike status to Disponible
       if (bikeId) {
         const { error: updateError } = await supabase
           .from("bikes")
           .update({ status: "Disponible" })
           .eq("id", bikeId);
-      
+
         if (updateError) {
           console.error("Error updating bike status:", updateError);
         }
       }
-    
-      setMessage(lang === "en" ? "Rental deleted successfully!" : "¡Alquiler eliminado con éxito!");
-    
+
+      setMessage(
+        lang === "en"
+          ? "Rental deleted successfully!"
+          : "¡Alquiler eliminado con éxito!"
+      );
+
       // Update UI immediately (optimistic UI update)
-      setRentals(prevRentals => prevRentals.filter(r => r.id !== rentalId));
-    
+      setRentals((prevRentals) => prevRentals.filter((r) => r.id !== rentalId));
+
       // Also refresh the data to ensure consistency
       loadData();
     } catch (error: unknown) {
       console.error("Delete error:", error);
-      setMessage(lang === "en" ? "Error deleting rental." : "Error al eliminar el alquiler.");
+      setMessage(
+        lang === "en"
+          ? "Error deleting rental."
+          : "Error al eliminar el alquiler."
+      );
     }
   };
 
@@ -572,8 +588,8 @@ export default function RentalsPage() {
                   placeholder={
                     lang === "en" ? "Notes (optional)" : "Notas (opcional)"
                   }
-                  value={message || ""}
-                  onChange={(e) => setMessage(e.target.value)}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
                   className="border px-3 py-2 rounded w-full"
                 />
               </div>
@@ -818,15 +834,10 @@ export default function RentalsPage() {
                       <option value="">Select a bike</option>
                       {bikes
                         .filter(
-                          (b) =>
-                            b.status === "Disponible" || b.id === r.bike_id
+                          (b) => b.status === "Disponible" || b.id === r.bike_id
                         )
                         .sort((a, b) =>
-                          a.id === r.bike_id
-                            ? -1
-                            : b.id === r.bike_id
-                            ? 1
-                            : 0
+                          a.id === r.bike_id ? -1 : b.id === r.bike_id ? 1 : 0
                         ) // Put current bike first
                         .map((b) => (
                           <option key={b.id} value={b.id}>
