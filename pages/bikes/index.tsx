@@ -1,7 +1,7 @@
 // pages/bikes/index.tsx
 import Layout from "@/components/Layout";
 import Image from "next/image";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import useSWR from "swr";
 import { useLanguage } from "@/context/LanguageContext";
@@ -126,6 +126,32 @@ export default function BikesPage() {
   const router = useRouter();
   const { data: bikes, mutate } = useSWR("/api/bikes", fetcher);
 
+  // Fetch newest notes for all bikes on screen (single query)
+  const { data: latestNotes, mutate: mutateLatestNotes } = useSWR(
+    Array.isArray(bikes) && (bikes as Bike[]).length > 0
+      ? ["bike-notes", (bikes as Bike[]).map((b) => b.id).join(",")]
+      : null,
+    async () => {
+      const ids = (bikes as Bike[]).map((b) => b.id);
+      const { data, error } = await supabase
+        .from("bike_notes")
+        .select("bike_id, note, created_at")
+        .in("bike_id", ids)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as { bike_id: number; note: string; created_at: string }[];
+    }
+  );
+
+  const latestNoteByBike = useMemo(() => {
+    const map: Record<number, { note: string; created_at: string }> = {};
+    for (const n of latestNotes || []) {
+      if (map[n.bike_id]) continue; // keep newest (list is desc)
+      map[n.bike_id] = { note: n.note, created_at: n.created_at };
+    }
+    return map;
+  }, [latestNotes]);
+
   // Add new bike states
   const [bikeId, setBikeId] = useState("");
   const [type, setType] = useState("");
@@ -133,7 +159,7 @@ export default function BikesPage() {
   const [size, setSize] = useState("");
   const [condition, setCondition] = useState("Good");
   const [status, setStatus] = useState("Disponible");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(""); // used as initial note on Add Bike
   const [photo, setPhoto] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -142,15 +168,51 @@ export default function BikesPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
 
+  // Lightbox state/refs
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<number>(1);
+  const [translate, setTranslate] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const pointersRef = useRef<Map<number, PointerEvent>>(new Map());
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const lastPanRef = useRef<{ x: number; y: number } | null>(null);
+  const pinchStartRef = useRef<number | null>(null);
+
+  // File input ref to clear after adding a bike
+  const addPhotoInputRef = useRef<HTMLInputElement | null>(null);
+
+  const closeLightbox = () => {
+    setZoom(1);
+    setTranslate({ x: 0, y: 0 });
+    pinchStartRef.current = null;
+    setLightboxSrc(null);
+  };
+
   // Pagination state and derived data
   const [page, setPage] = useState(1);
-  const items = Array.isArray(bikes) ? bikes : [];
-  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
-  const paginatedBikes = items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const allBikes = Array.isArray(bikes) ? (bikes as Bike[]) : [];
 
+  // Filter by search (case-insensitive) and by availability filter
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredBikes = allBikes.filter((b) => {
+    if (filter === "available" && b.status !== "Disponible") return false;
+    if (filter === "unavailable" && b.status === "Disponible") return false;
+    if (!normalizedSearch) return true;
+    const haystack = [
+      String(b.brand_model || ""),
+      String(b.bike_id || ""),
+      String(b.type || ""),
+      // notes moved to bike_notes, no longer searchable here
+    ].join(" ").toLowerCase();
+    return haystack.includes(normalizedSearch);
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredBikes.length / PAGE_SIZE));
+  const paginatedBikes = filteredBikes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // Reset to first page when search/filter/total results change
   useEffect(() => {
-    setPage(1); // reset to first page when list changes
-  }, [items.length]);
+    setPage(1);
+  }, [normalizedSearch, filter, allBikes.length]);
   // Auto-populate bikeId with next available (yy000 format)
   // This effect runs when bikes data changes
   useEffect(() => {
@@ -181,7 +243,7 @@ export default function BikesPage() {
     return url ? `${url}?v=${Date.now()}` : null;
   };
 
-  // Add Bike: insert first to get ID, then upload with upsert to a fixed path, then update photo_url
+  // Add Bike: remove notes from bikes insert; insert into bike_notes after
   const addBike = async () => {
     // Validation: require brandModel, type, and size
     if (!brandModel || !type || !size) {
@@ -199,24 +261,21 @@ export default function BikesPage() {
     try {
       setUploading(true);
 
-      // 1) Create bike without photo to get the new ID
       const { data: inserted, error: insertErr } = await supabase
         .from("bikes")
-        .insert([
-          {
-            bike_id: bikeId,
-            type,
-            brand_model: brandModel,
-            size,
-            condition,
-            status,
-            notes,
-            photo_url: null,
-          },
-        ])
+        .insert([{ bike_id: bikeId, type, brand_model: brandModel, size, condition, status, photo_url: null }]) // removed notes
         .select("id")
         .single();
       if (insertErr) throw insertErr;
+
+      // Initial note into bike_notes (optional)
+      const trimmed = notes.trim();
+      if (trimmed) {
+        const { data: userData } = await supabase.auth.getUser();
+        await supabase.from("bike_notes").insert([
+          { bike_id: inserted.id, note: trimmed, created_by: userData?.user?.id ?? null },
+        ]);
+      }
 
       let photoUrl: string | null = null;
       if (photo) {
@@ -256,6 +315,7 @@ export default function BikesPage() {
       setStatus("Disponible");
       setNotes("");
       setPhoto(null);
+      if (addPhotoInputRef.current) addPhotoInputRef.current.value = "";
       setMessage(
         lang === "en" ? "Bike added successfully!" : "Bicicleta agregada!"
       );
@@ -309,7 +369,37 @@ export default function BikesPage() {
   const [editUploading, setEditUploading] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
-  // Open/Close helpers
+  // Optional: keep Bike.notes but we won't write to it anymore
+
+  // Types for notes
+  type BikeNote = {
+    id: number;
+    bike_id: number;
+    note: string;
+    created_at: string;
+    created_by?: string | null;
+  };
+
+  // State for bike notes
+  const [bikeNotes, setBikeNotes] = useState<BikeNote[]>([]);
+  const [newNote, setNewNote] = useState("");
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState("");
+
+  // Load notes for a bike (called when opening Edit)
+  const loadBikeNotes = async (bikePk: number) => {
+    setLoadingNotes(true);
+    const { data, error } = await supabase
+      .from("bike_notes")
+      .select("*")
+      .eq("bike_id", bikePk)
+      .order("created_at", { ascending: false });
+    if (!error) setBikeNotes(data || []);
+    setLoadingNotes(false);
+  };
+
+  // Open Edit: fetch notes and clear newNote
   const openEditModal = (bike: Bike) => {
     setEditingBike(bike);
     setEditDraft({
@@ -319,12 +409,14 @@ export default function BikesPage() {
       size: bike.size || "",
       condition: bike.condition || "",
       status: bike.status || "",
-      notes: bike.notes ?? "",     // auto-populate notes
+      notes: "", // no longer editing bikes.notes
       photo_url: bike.photo_url ?? null,
     });
     setEditNotesTouched(false);
+    setNewNote("");
     setEditPhoto(null);
     setShowEditModal(true);
+    loadBikeNotes(bike.id);
   };
 
   const closeEditModal = () => {
@@ -335,12 +427,11 @@ export default function BikesPage() {
     setEditNotesTouched(false);
   };
 
-  // Edit Bike: just overwrite the same fixed path with upsert=true and update photo_url
+  // Edit Bike: do NOT update bikes.notes; optionally add a new note record
   const saveEditBike = async () => {
     if (!editingBike || !editDraft) return;
 
     let photo_url = editDraft.photo_url;
-
     try {
       if (editPhoto) {
         setEditUploading(true);
@@ -359,9 +450,6 @@ export default function BikesPage() {
       setEditUploading(false);
     }
 
-    // If notes were not touched, keep original notes to avoid accidental erase
-    const notesToSave = editNotesTouched ? editDraft.notes : (editingBike.notes ?? "");
-
     const { error } = await supabase
       .from("bikes")
       .update({
@@ -371,45 +459,49 @@ export default function BikesPage() {
         size: editDraft.size,
         condition: editDraft.condition,
         status: editDraft.status,
-        notes: notesToSave,
         photo_url,
       })
       .eq("id", editingBike.id);
-
     if (error) {
       setMessage((lang === "en" ? "Error updating bike: " : "Error actualizando bicicleta: ") + error.message);
       return;
     }
 
+    // Add new note if entered
+    const trimmed = newNote.trim();
+    if (trimmed) {
+      const { data: userData } = await supabase.auth.getUser();
+      const { data: insertedNote, error: noteError } = await supabase
+        .from("bike_notes")
+        .insert([
+          { bike_id: editingBike.id, note: trimmed, created_by: userData?.user?.id ?? null },
+        ])
+        .select("*")
+        .single();
+
+      if (noteError) {
+        setMessage((lang === "en" ? "Error adding note: " : "Error agregando nota: ") + noteError.message);
+        return;
+      }
+
+      // Update bikeNotes (modal)
+      setBikeNotes((prevNotes) => [insertedNote, ...prevNotes]);
+
+      // Optimistically update latestNotes (grid), then revalidate
+      const mini = {
+        bike_id: insertedNote.bike_id,
+        note: insertedNote.note,
+        created_at: insertedNote.created_at,
+      };
+      await mutateLatestNotes((prev) => (prev ? [mini, ...prev] : [mini]), { revalidate: false });
+      mutateLatestNotes(); // background revalidate
+    }
+
     await mutate();
+    setNewNote("");
     closeEditModal();
     setMessage(lang === "en" ? "Bike updated!" : "¡Bicicleta actualizada!");
   };
-
-  // =====================
-  // Image Upload Handler
-  // =====================
-  // const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-  //   const file = event.target.files?.[0];
-  //   if (!file) return;
-
-  //   // Set options for compression and resizing
-  //   const options = {
-  //     maxSizeMB: 0.3,           // Target max size in MB (e.g. 300 KB)
-  //     maxWidthOrHeight: 1200,   // Resize to max 1200px width or height
-  //     useWebWorker: true,
-  //   };
-
-  //   try {
-  //     const compressedFile = await imageCompression(file, options);
-
-  //     // Now upload compressedFile to Supabase Storage
-  //     // await supabase.storage.from('your-bucket').upload('path', compressedFile);
-
-  //   } catch (error) {
-  //     console.error("Image compression error:", error);
-  //   }
-  // };
 
   // Compressed photo handler
   const handleCompressedPhoto = async (file: File, setter: (f: File | null) => void) => {
@@ -429,6 +521,87 @@ export default function BikesPage() {
       );
       setter(null);
     }
+  };
+
+  // =====================
+  // Add localized type labels helper
+  // =====================
+  const typeLabels: Record<string, { en: string; es: string }> = {
+    Hybrid: { en: "Hybrid", es: "Híbrida" },
+    Mountain: { en: "Mountain", es: "Montaña" },
+    Gravel: { en: "Gravel", es: "Grava" },
+    Folding: { en: "Folding", es: "Plegable" },
+    BMX: { en: "BMX", es: "BMX" },
+    Childrens: { en: "Childrens", es: "Infantil" },
+    Road: { en: "Road", es: "Carretera" },
+  };
+
+  const getTypeLabel = (type: string | undefined, lang: string) => {
+    if (!type) return "";
+    return typeLabels[type]?.[lang === "en" ? "en" : "es"] ?? type;
+  };
+
+  // =====================
+  // Note editing helpers
+  // =====================
+  const startEditNote = (note: BikeNote) => {
+    setEditingNoteId(note.id);
+    setEditingNoteText(note.note);
+  };
+
+  const cancelEditNote = () => {
+    setEditingNoteId(null);
+    setEditingNoteText("");
+  };
+
+  const saveNoteEdit = async () => {
+    if (!editingNoteId) return;
+    const { error } = await supabase
+      .from("bike_notes")
+      .update({ note: editingNoteText })
+      .eq("id", editingNoteId);
+    if (error) {
+      setMessage(
+        (lang === "en" ? "Error updating note: " : "Error actualizando nota: ") + error.message
+      );
+      return;
+    }
+
+    // Update bikeNotes state
+    setBikeNotes((prevNotes) =>
+      prevNotes.map((n) => (n.id === editingNoteId ? { ...n, note: editingNoteText } : n))
+    );
+
+    // If the edited note is the most recent, update the SWR cache that feeds latestNoteByBike
+    if (bikeNotes[0]?.id === editingNoteId) {
+      await mutateLatestNotes(
+        (prev) => {
+          if (!prev) return prev;
+          const bikeId = bikeNotes[0].bike_id;
+          const idx = prev.findIndex((n) => n.bike_id === bikeId);
+          if (idx === -1) return prev;
+          const next = prev.slice();
+          next[idx] = { ...next[idx], note: editingNoteText };
+          return next;
+        },
+        { revalidate: false }
+      );
+      mutateLatestNotes(); // background revalidate
+    }
+
+    cancelEditNote();
+  };
+
+  const deleteNote = async (id: number) => {
+    if (!confirm(lang === "en" ? "Delete this note?" : "¿Eliminar esta nota?")) return;
+    const { error } = await supabase.from("bike_notes").delete().eq("id", id);
+    if (error) {
+      setMessage(
+        (lang === "en" ? "Error deleting note: " : "Error eliminando nota: ") + error.message
+      );
+      return;
+    }
+    if (editingBike) await loadBikeNotes(editingBike.id);
   };
 
   // =====================
@@ -455,11 +628,9 @@ export default function BikesPage() {
             <h2 className="text-xl font-semibold mb-4">
               {lang === "en" ? "Add New Bike" : "Agregar Bicicleta"}
             </h2>
-
-            {/* Make the form responsive */}
             <form
               className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-center"
-              onSubmit={e => {
+              onSubmit={(e) => {
                 e.preventDefault();
                 addBike();
               }}
@@ -541,21 +712,32 @@ export default function BikesPage() {
                 onChange={(e) => setNotes(e.target.value)}
                 className="border px-3 py-2 rounded w-full"
               />
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment" // This hints mobile browsers to use the rear camera
-                onChange={async (e) => {
-                  const file = e.target.files?.[0] || null;
-                  if (!file) {
-                    setPhoto(null);
-                    return;
-                  }
-                  // Compress and resize before setting photo
-                  await handleCompressedPhoto(file, setPhoto);
-                }}
-                className="border px-3 py-2 rounded bg-gray-50 w-full"
-              />
+              {/* Replace the current file input with the icon-enhanced version and attach the ref. */}
+              <div className="relative">
+                <svg
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M9 3a1 1 0 0 0-.832.445L6.535 6H5a3 3 0 0 0-3 3v7a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-1.535l-1.633-2.555A1 1 0 0 0 14 3H9zm3 4a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
+                </svg>
+                <input
+                  ref={addPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0] || null;
+                    if (!file) {
+                      setPhoto(null);
+                      return;
+                    }
+                    await handleCompressedPhoto(file, setPhoto);
+                  }}
+                  className="border px-3 pl-10 py-2 rounded bg-gray-50 w-full"
+                />
+              </div>
               <button
                 type="submit"
                 disabled={uploading}
@@ -609,20 +791,27 @@ export default function BikesPage() {
             ) : (
               paginatedBikes.map((bike) => (
                 <div key={bike.id} className="bg-white rounded shadow p-4 flex flex-col">
-                  <Image
-                    src={bike.photo_url || "/bikeplaceholder.png"}
-                    alt={bike.brand_model || bike.bike_id}
-                    className="h-48 w-full object-cover"
-                    width={400}
-                    height={192}
-                    unoptimized
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setLightboxSrc(bike.photo_url || "/bikeplaceholder.png")}
+                    className="w-full"
+                    aria-label={lang === "en" ? "Open image" : "Abrir imagen"}
+                  >
+                    <Image
+                      src={bike.photo_url || "/bikeplaceholder.png"}
+                      alt={bike.brand_model || bike.bike_id}
+                      className="h-48 w-full object-cover rounded cursor-zoom-in"
+                      width={400}
+                      height={192}
+                      unoptimized
+                    />
+                  </button>
                   <div className="p-4 flex-1">
                     <h3 className="text-lg font-semibold mb-1">
                       {bike.brand_model || bike.bike_id}
                     </h3>
                     <p className="text-sm font-medium mb-1">
-                      {bike.type} | {bike.size}
+                      {getTypeLabel(String(bike.type), lang)} | {bike.size}
                     </p>
                     {bike.size && (
                       <p className="text-xs text-gray-500 mb-1">
@@ -648,7 +837,12 @@ export default function BikesPage() {
                     <p className="text-sm text-gray-600 mb-2">
                       {bike.condition}
                     </p>
-                    <p className="text-sm text-gray-500 mb-2">{bike.notes}</p>
+                    {/* Latest note preview */}
+                    {latestNoteByBike[bike.id]?.note ? (
+                      <p className="text-xs text-gray-700 mb-2">
+                        {truncate(latestNoteByBike[bike.id].note, 120)}
+                      </p>
+                    ) : null}
                     <p className="text-xs text-gray-400 mb-4">{bike.bike_id}</p>
                     <div className="flex gap-2">
                       <button
@@ -674,7 +868,11 @@ export default function BikesPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex justify-center items-center gap-2 mt-6" role="navigation" aria-label="Pagination">
+            <div
+              className="flex justify-center items-center gap-2 mt-6"
+              role="navigation"
+              aria-label="Pagination"
+            >
               <button
                 type="button" // important: prevent form submit
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
@@ -700,7 +898,10 @@ export default function BikesPage() {
           {/* Edit Modal */}
           {showEditModal && editingBike && editDraft && (
             <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-              <div key={editingBike.id} className="bg-white rounded-lg p-6 w/full max-w-md">
+              <div
+                key={editingBike.id}
+                className="bg-white rounded-lg p-6 w-full max-w-md"
+              >
                 <h2 className="text-xl font-semibold mb-4">
                   {lang === "en" ? "Edit Bike" : "Editar Bicicleta"}
                 </h2>
@@ -778,18 +979,87 @@ export default function BikesPage() {
                 </select>
 
                 <label className="block text-sm font-medium mb-1">
-                  {lang === "en" ? "Notes" : "Notas"}
+                  {lang === "en" ? "Add note" : "Agregar nota"}
                 </label>
                 <textarea
-                  value={editDraft.notes}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setEditDraft(d => d ? { ...d, notes: v } : d);
-                    setEditNotesTouched(true);
-                  }}
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
                   className="border px-3 py-2 rounded w-full mb-4 min-h-[80px]"
-                  placeholder={lang === "en" ? "Notes..." : "Notas..."}
+                  placeholder={lang === "en" ? "New note..." : "Nueva nota..."}
                 />
+
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold mb-2">
+                    {lang === "en" ? "Notes history" : "Historial de notas"}
+                  </h3>
+                  {loadingNotes ? (
+                    <p className="text-xs text-gray-500">{lang === "en" ? "Loading..." : "Cargando..."}</p>
+                  ) : bikeNotes.length === 0 ? (
+                    <p className="text-xs text-gray-500">{lang === "en" ? "No notes yet" : "Sin notas"}</p>
+                  ) : (
+                    <ul className="space-y-2 max-h-48 overflow-auto pr-1">
+                      {bikeNotes.map((n) => {
+                        const isEditing = editingNoteId === n.id;
+                        return (
+                          <li key={n.id} className="text-xs">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-gray-400 whitespace-nowrap">
+                                {new Date(n.created_at).toLocaleString()}
+                              </span>
+                              <div className="flex-1">
+                                {isEditing ? (
+                                  <textarea
+                                    value={editingNoteText}
+                                    onChange={(e) => setEditingNoteText(e.target.value)}
+                                    className="border px-2 py-1 rounded w-full"
+                                    rows={2}
+                                  />
+                                ) : (
+                                  <span className="text-gray-700 whitespace-pre-wrap block">{n.note}</span>
+                                )}
+                              </div>
+                              <div className="shrink-0 flex gap-1">
+                                {isEditing ? (
+                                  <>
+                                    <button
+                                      onClick={saveNoteEdit}
+                                      className="px-2 py-1 rounded bg-green-600 text-white"
+                                    >
+                                      {lang === "en" ? "Save" : "Guardar"}
+                                    </button>
+                                    <button
+                                      onClick={cancelEditNote}
+                                      className="px-2 py-1 rounded bg-gray-300"
+                                    >
+                                      {lang === "en" ? "Cancel" : "Cancelar"}
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => startEditNote(n)}
+                                      className="px-2 py-1 rounded bg-gray-200"
+                                      title={lang === "en" ? "Edit note" : "Editar nota"}
+                                    >
+                                      {lang === "en" ? "Edit" : "Editar"}
+                                    </button>
+                                    <button
+                                      onClick={() => deleteNote(n.id)}
+                                      className="px-2 py-1 rounded bg-red-600 text-white"
+                                      title={lang === "en" ? "Delete note" : "Eliminar nota"}
+                                    >
+                                      {lang === "en" ? "Delete" : "Eliminar"}
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
 
                 <input
                   type="file"
@@ -825,9 +1095,142 @@ export default function BikesPage() {
                 
               </div>
             </div>
-          )        
-        }</div>
+          )}
+
+        {/* Lightbox overlay for image preview */}
+        {lightboxSrc && (
+          <div
+            className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            onClick={closeLightbox}
+          >
+            <div
+              ref={containerRef}
+              className="relative max-w-[95vw] max-h-[95vh] touch-none"
+              onClick={(e) => e.stopPropagation()}
+              onWheel={(e) => {
+                e.preventDefault();
+                const delta = -e.deltaY;
+                const factor = delta > 0 ? 1.075 : 0.925;
+                setZoom((z) => Math.min(4, Math.max(1, +(z * factor).toFixed(3))));
+              }}
+              onPointerDown={(e) => {
+                (e.target as Element).setPointerCapture?.(e.pointerId);
+                pointersRef.current.set(e.pointerId, e as unknown as PointerEvent);
+                if (pointersRef.current.size === 1) {
+                  lastPanRef.current = { x: e.clientX, y: e.clientY };
+                }
+              }}
+              onPointerMove={(e) => {
+                if (pointersRef.current.size === 1 && zoom > 1) {
+                  const last = lastPanRef.current;
+                  if (!last) return;
+                  const dx = e.clientX - last.x;
+                  const dy = e.clientY - last.y;
+                  setTranslate((t) => ({ x: t.x + dx, y: t.y + dy }));
+                  lastPanRef.current = { x: e.clientX, y: e.clientY };
+                } else if (pointersRef.current.size >= 2) {
+                  pointersRef.current.set(e.pointerId, e as unknown as PointerEvent);
+                  const pts = Array.from(pointersRef.current.values()) as PointerEvent[];
+                  if (pts.length >= 2) {
+                    const [p1, p2] = pts;
+                    const dx = p2.clientX - p1.clientX;
+                    const dy = p2.clientY - p1.clientY;
+                    const dist = Math.hypot(dx, dy);
+                    if (pinchStartRef.current == null) {
+                      pinchStartRef.current = dist;
+                    } else {
+                      const start = pinchStartRef.current;
+                      if (start > 0) {
+                        const scale = dist / start;
+                        setZoom((z) => Math.min(4, Math.max(1, +(z * scale).toFixed(3))));
+                        pinchStartRef.current = dist;
+                      }
+                    }
+                  }
+                }
+              }}
+              onPointerUp={(e) => {
+                pointersRef.current.delete(e.pointerId);
+                lastPanRef.current = null;
+                pinchStartRef.current = null;
+              }}
+              onPointerCancel={(e) => {
+                pointersRef.current.delete(e.pointerId);
+                lastPanRef.current = null;
+                pinchStartRef.current = null;
+              }}
+              onDoubleClick={() => {
+                setZoom(1);
+                setTranslate({ x: 0, y: 0 });
+                pinchStartRef.current = null;
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeLightbox}
+                className="absolute -top-3 -right-3 bg-white rounded-full p-2 shadow"
+                aria-label={lang === "en" ? "Close image" : "Cerrar imagen"}
+              >
+                ✕
+              </button>
+
+              <div
+                className="flex items-center justify-center overflow-hidden rounded bg-black"
+                style={{ width: "min(95vw, 1200px)", height: "min(85vh, 900px)" }}
+              >
+                <img
+                  src={lightboxSrc}
+                  alt="bike"
+                  draggable={false}
+                  className="select-none"
+                  style={{
+                    transform: `translate(${translate.x}px, ${translate.y}px) scale(${zoom})`,
+                    transition: "transform 0.05s linear",
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                  }}
+                />
+              </div>
+
+              <div className="absolute left-4 bottom-4 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.max(1, +(z - 0.25).toFixed(2)))}
+                  className="bg-white p-2 rounded shadow"
+                  aria-label="Zoom out"
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setZoom((z) => Math.min(4, +(z + 0.25).toFixed(2)))}
+                  className="bg-white p-2 rounded shadow"
+                  aria-label="Zoom in"
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setZoom(1);
+                    setTranslate({ x: 0, y: 0 });
+                  }}
+                  className="bg-white p-2 rounded shadow"
+                  aria-label="Reset zoom"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
       </div>
     </Layout>
   );
 }
+
+// Helper: truncate text for card preview
+const truncate = (s: string, len: number) => (s.length > len ? s.slice(0, len - 1) + "…" : s);

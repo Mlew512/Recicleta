@@ -32,8 +32,16 @@ const bikeTypeLabels: Record<string, { en: string; es: string }> = {
   Road: { en: "Road", es: "Carretera" },
 };
 
+// add this condition labels mapping
+const conditionLabels: Record<string, { en: string; es: string }> = {
+  Good: { en: "Good", es: "Bueno" },
+  "Needs Maintenance": { en: "Needs maintenance", es: "Necesita mantenimiento" },
+  // add other condition keys if you use them in DB
+};
+
 type Bike = {
   id: number | string;
+  condition: string;
   brand_model?: string | null;
   bike_id?: string | null;
   type: string;
@@ -48,6 +56,17 @@ export default function AvailableBikesPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [userHeight, setUserHeight] = useState<string>("");
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  // close lightbox on ESC
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightboxSrc(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightboxSrc]);
 
   useEffect(() => {
     supabase
@@ -176,13 +195,18 @@ export default function AvailableBikesPage() {
               className="bg-white rounded-lg shadow p-4 flex flex-col"
             >
               <div className="font-bold text-lg mb-2">
-                {bike.brand_model} ({bike.bike_id})
+                {bike.brand_model}
               </div>
               <div className="mb-1">
                 <span className="font-medium">
                   {bikeTypeLabels[bike.type]?.[lang] || bike.type}
                 </span>{" "}
-                | <span>{bike.size}</span>
+                <span className="text-sm text-gray-600">| {bike.size}</span>
+                {bike.condition ? (
+                  <span className="ml-2 inline-block text-sm text-gray-700">
+                    — {conditionLabels[bike.condition]?.[lang] || bike.condition}
+                  </span>
+                ) : null}
               </div>
               <div className="text-gray-600 text-sm mb-2">
                 {bike.type === "Childrens"
@@ -198,11 +222,18 @@ export default function AvailableBikesPage() {
                       : "")}
               </div>
               {bike.photo_url && (
-                <img
-                  src={bike.photo_url}
-                  alt={bike.brand_model}
-                  className="rounded w-full h-40 object-cover mb-2"
-                />
+                <button
+                  type="button"
+                  onClick={() => setLightboxSrc(bike.photo_url || null)}
+                  className="block w-full mb-2 p-0 border-0 bg-transparent"
+                  aria-label={lang === "en" ? "Open image" : "Abrir imagen"}
+                >
+                  <img
+                    src={bike.photo_url}
+                    alt={bike.brand_model || "bike"}
+                    className="rounded w-full h-40 object-cover mb-2 cursor-zoom-in"
+                  />
+                </button>
               )}
               {/* Notes removed from display */}
             </div>
@@ -237,6 +268,26 @@ export default function AvailableBikesPage() {
           </div>
         )}
       </div>
+      {/* Lightbox / Image modal */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setLightboxSrc(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="relative max-w-[95vw] max-h-[95vh]" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setLightboxSrc(null)}
+              className="absolute -top-3 -right-3 bg-white rounded-full p-2 shadow"
+              aria-label={lang === "en" ? "Close image" : "Cerrar imagen"}
+            >
+              ✕
+            </button>
+            <img src={lightboxSrc} alt="bike" className="max-w-full max-h-[85vh] rounded" />
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
