@@ -52,7 +52,7 @@ export default function SalesPage() {
     amount: lang === "en" ? "Amount (€)" : "Monto (€)",
     quantity: lang === "en" ? "Quantity" : "Cantidad",
     buyerName: lang === "en" ? "Buyer Name (optional)" : "Nombre del comprador (opcional)",
-    buyerEmail: lang === "en" ? "Buyer Email (optional)" : "Email del comprador (opcional)",
+    buyerEmail: lang === "en" ? "Email" : "Email",
     donation: lang === "en" ? "Donation" : "Donación",
     sale: lang === "en" ? "Sale" : "Venta",
     addSale: lang === "en" ? "Add Sale/Donation" : "Agregar Venta/Donación",
@@ -61,10 +61,11 @@ export default function SalesPage() {
     success: lang === "en" ? "Sale/Donation registered!" : "¡Venta/Donación registrada!",
     error: lang === "en" ? "Error registering: " : "Error registrando: ",
     date: lang === "en" ? "Date" : "Fecha",
-    anon: lang === "en" ? "Anonymous" : "Anónimo",
+    anon: lang === "en" ? "" : "",
     type: lang === "en" ? "Type" : "Tipo",
     search: lang === "en" ? "Search sales..." : "Buscar ventas...",
     soldBy: lang === "en" ? "Sold by" : "Vendido por",
+    total: lang === "en" ? "Total (€)" : "Total (€)",
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -207,7 +208,6 @@ export default function SalesPage() {
               <table className="min-w-full border border-gray-300">
                 <thead className="bg-gray-800 text-white">
                   <tr>
-                    <th className="p-2 border">{labels.type}</th>
                     <th className="p-2 border">{labels.item}</th>
                     <th className="p-2 border">{labels.amount}</th>
                     <th className="p-2 border">{labels.quantity}</th>
@@ -215,13 +215,13 @@ export default function SalesPage() {
                     <th className="p-2 border">{labels.buyerEmail}</th>
                     <th className="p-2 border">{labels.date}</th>
                     <th className="p-2 border">{labels.soldBy}</th>
-                    <th className="p-2 border">Actions</th>
+                    <th className="p-2 border">{labels.total}</th>
+                    {/* <th className="p-2 border">Actions</th> */}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredSales.map((s) => (
                     <tr key={s.id} className="hover:bg-gray-100">
-                      <td className="border p-2">{s.item === labels.donation ? labels.donation : labels.sale}</td>
                       <td className="border p-2">{s.item}</td>
                       <td className="border p-2">{s.amount}</td>
                       <td className="border p-2">{s.quantity}</td>
@@ -229,9 +229,17 @@ export default function SalesPage() {
                       <td className="border p-2">{s.buyer_email || labels.anon}</td>
                       <td className="border p-2">{s.sale_date}</td>
                       <td className="border p-2">{getUserName(s.created_by_email)}</td>
-                      <td className="border p-2">
+                      <td className="border p-2">{s.amount * s.quantity}</td>
+                      {/* <td className="border p-2"> */}
                         {/* Add your edit/send receipt buttons here */}
-                      </td>
+                        {/* <button
+                          onClick={() => handleEditSale(s.id)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                        >
+                          {lang === "en" ? "Edit" : "Editar"}
+                        </button> */}
+
+                      {/* </td> */}
                     </tr>
                   ))}
                 </tbody>

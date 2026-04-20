@@ -5,6 +5,7 @@ import Layout from "@/components/Layout";
 import { useLanguage } from "@/context/LanguageContext";
 import useSWR from "swr";
 import { User } from "@supabase/supabase-js";
+import HomeStats from "@/components/HomeStats";
 
 const fetchStatsAndRevenue = async () => {
   try {
@@ -136,17 +137,8 @@ export default function HomePage() {
         {/* Only show counters and revenue if logged in */}
         {user && (
           <>
-            {/* Counters Section */}
-            <div className="mb-8 space-y-4">
-              <div className="flex justify-between items-center border-b pb-2">
-                <span className="font-semibold">{labels.availableBikes}</span>
-                <span>{data?.availableBikesCount ?? "-"}</span>
-              </div>
-              <div className="flex justify-between items-center border-b pb-2">
-                <span className="font-semibold">{labels.activeRentals}</span>
-                <span>{data?.activeRentalsCount ?? "-"}</span>
-              </div>
-            </div>
+            {/* Enhanced Counters Section */}
+            <HomeStats />
             {/* Revenue Section */}
             <h1 className="text-2xl font-bold mb-6">{labels.revenue}</h1>
             <p className="mb-4 text-gray-700">{labels.info}</p>

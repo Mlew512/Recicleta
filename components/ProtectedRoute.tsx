@@ -6,6 +6,8 @@ import type { User } from "@supabase/supabase-js";
 import RentalPrices from "@/components/RentalPrices";
 import Link from "next/link";
 import { useLanguage } from "@/context/LanguageContext";
+import HomeStats from "./HomeStats";
+
 
 function SplashPage() {
   const { lang, toggleLang } = useLanguage();
@@ -30,6 +32,15 @@ function SplashPage() {
       <h1 className="text-3xl font-bold mb-4">
         {lang === "en" ? "Welcome to Recicleta!" : "¡Bienvenido a Recicleta!"}
       </h1>
+ {/* Add Available Bikes Button */}
+      <div className="flex justify-center mb-6 w-full max-w-xs mx-auto">
+        <button
+          onClick={() => router.push("/available-bikes")}
+          className="bg-green-700 text-white px-4 py-2 rounded shadow hover:bg-green-800 w-full text-center transition"
+        >
+          {lang === "en" ? "View Available Bikes" : "Ver bicicletas disponibles"}
+        </button>
+      </div>
       <p className="text-lg max-w-xl mb-6">{mission[lang]}</p>
       <RentalPrices lang={lang} />
       <div className="flex flex-col md:flex-row gap-3 md:space-x-4 mb-4 w-full max-w-xs mx-auto">
@@ -40,15 +51,7 @@ function SplashPage() {
           {lang === "en" ? "Fill Out Rental Application" : "Completar Solicitud de Alquiler"}
         </Link>
       </div>
-      {/* Add Available Bikes Button */}
-      <div className="flex justify-center mb-6 w-full max-w-xs mx-auto">
-        <button
-          onClick={() => router.push("/available-bikes")}
-          className="bg-green-700 text-white px-4 py-2 rounded shadow hover:bg-green-800 w-full text-center transition"
-        >
-          {lang === "en" ? "View Available Bikes" : "Ver bicicletas disponibles"}
-        </button>
-      </div>
+     
       <div className="flex flex-col items-center gap-2 mt-6">
         <span className="font-semibold">{lang === "en" ? "Follow us:" : "Síguenos:"}</span>
         <div className="flex gap-4">
