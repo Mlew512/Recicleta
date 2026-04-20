@@ -163,6 +163,8 @@ export default function BikesPage() {
   const [photo, setPhoto] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  const [showAddForm, setShowAddForm] = useState(false);
+
   // Global states
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -320,6 +322,7 @@ export default function BikesPage() {
         lang === "en" ? "Bike added successfully!" : "Bicicleta agregada!"
       );
       mutate();
+      setShowAddForm(false);
     } catch (err: unknown) {
       setMessage((lang === "en" ? "Error adding bike: " : "Error agregando bicicleta: ") + (err instanceof Error ? err.message : String(err)));
     } finally {
@@ -343,6 +346,7 @@ export default function BikesPage() {
     else {
       setMessage(lang === "en" ? "Bike deleted!" : "Bicicleta eliminada!");
       mutate();
+      setShowAddForm(false);
     }
   };
 
@@ -498,6 +502,7 @@ export default function BikesPage() {
     }
 
     await mutate();
+      setShowAddForm(false);
     setNewNote("");
     closeEditModal();
     setMessage(lang === "en" ? "Bike updated!" : "¡Bicicleta actualizada!");
@@ -615,6 +620,12 @@ export default function BikesPage() {
             <h1 className="text-3xl font-bold">
               {lang === "en" ? "Bike Inventory" : "Inventario de Bicicletas"}
             </h1>
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+            >
+              {lang === "en" ? "Add New Bike" : "Agregar Bicicleta Nueva"}
+            </button>
           </div>
 
           {message && (
@@ -624,6 +635,7 @@ export default function BikesPage() {
           )}
 
           {/* Add New Bike */}
+          {showAddForm && (
           <div className="bg-white rounded-lg shadow p-6 mb-8">
             <h2 className="text-xl font-semibold mb-4">
               {lang === "en" ? "Add New Bike" : "Agregar Bicicleta"}
@@ -753,6 +765,8 @@ export default function BikesPage() {
               </button>
             </form>
           </div>
+
+          )}
 
           {/* Search & Filter */}
           <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-3">

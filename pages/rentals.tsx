@@ -1,4 +1,5 @@
 import Layout from "@/components/Layout";
+import Image from "next/image";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Database } from "@/lib/database.types";
@@ -36,6 +37,7 @@ type Rental = {
     brand_model: string;
     bike_id: string;
     type?: string; // <-- Add this line
+    photo_url?: string | null;
     // ...other bike fields...
   };
   notes?: string; // <-- New field for rental notes
@@ -54,6 +56,15 @@ function formatDate(dateStr: string, lang: string) {
     month: "2-digit",
     year: "2-digit",
   });
+}
+
+function parseEUDate(dateStr: string): Date {
+  if (!dateStr) return new Date(0);
+  if (dateStr.includes('/')) {
+    const [day, month, year] = dateStr.split('/').map(Number);
+    return new Date(year, month - 1, day);
+  }
+  return new Date(dateStr);
 }
 
 // Add this mapping near the top of your file:
@@ -91,6 +102,14 @@ export default function RentalsPage() {
   const [editingRentalId, setEditingRentalId] = useState<string | null>(null);
   const [editBikeId, setEditBikeId] = useState<string>("");
   const [editNotes, setEditNotes] = useState<string>("");
+  const [showActiveOnly, setShowActiveOnly] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, showActiveOnly]);
+
+  const closeLightbox = () => setLightboxSrc(null);
 
   // Use useCallback to memoize loadData
   const loadData = useCallback(async () => {
@@ -103,7 +122,7 @@ export default function RentalsPage() {
           supabase.from("rentals").select(`
           *,
           bikes (
-            id, bike_id, type, status, brand_model, size, condition
+            id, bike_id, type, status, brand_model, size, condition, photo_url
           ),
           users (
             id, name, email, dni
@@ -173,7 +192,7 @@ export default function RentalsPage() {
         total_cost: 0, // Will be calculated when closed
         user_type: rentalType || "adult",
         created_by_email: userEmail, // <-- This will now work!
-        notes: message || "", // <-- Include notes
+        notes: notes.trim() || "",
       },
     ]);
 
@@ -194,6 +213,7 @@ export default function RentalsPage() {
     setSelectedBike("");
     setSelectedUser("");
     setRentalType("");
+    setNotes("");
 
     mutate("/api/revenue");
   };
@@ -392,6 +412,7 @@ export default function RentalsPage() {
   };
 
   const filteredRentals = rentals.filter((r: Rental) => {
+     if (showActiveOnly && r.end_date) return false;
     const q = search.toLowerCase();
     return (
       r.bikes?.bike_id?.toLowerCase().includes(q) ||
@@ -401,13 +422,13 @@ export default function RentalsPage() {
     );
   });
 
-  // Sort: active first, then by start_date descending (newest first)
+  // Sort: active first (no end_date), then by start_date descending (newest first)
   const sortedRentals = [...filteredRentals].sort((a, b) => {
-    // Active first
-    if (a.status === "Activo" && b.status !== "Activo") return -1;
-    if (a.status !== "Activo" && b.status === "Activo") return 1;
+    // Active first (no end_date)
+    if (!a.end_date && b.end_date) return -1;
+    if (a.end_date && !b.end_date) return 1;
     // Newest first
-    return new Date(b.start_date).getTime() - new Date(a.start_date).getTime();
+    return parseEUDate(b.start_date).getTime() - parseEUDate(a.start_date).getTime();
   });
 
   // Use sortedRentals for pagination
@@ -459,6 +480,7 @@ export default function RentalsPage() {
     refund: lang === "en" ? "Refund (€)" : "Reembolso (€)",
     status: lang === "en" ? "Status" : "Estado",
     actions: lang === "en" ? "Actions" : "Acciones",
+    showActiveOnly: lang === "en" ? "Show only active rentals" : "Mostrar solo alquileres activos",
   };
 
   return (
@@ -607,13 +629,23 @@ export default function RentalsPage() {
           </div>
 
           {/* Search + Rentals Table */}
-          <input
-            type="text"
-            placeholder={labels.searchPlaceholder}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="border px-3 py-2 rounded w-full mb-4"
-          />
+          <div className="flex items-center gap-4 mb-4">
+            <input
+              type="text"
+              placeholder={labels.searchPlaceholder}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="border px-3 py-2 rounded flex-1"
+            />
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showActiveOnly}
+                onChange={(e) => setShowActiveOnly(e.target.checked)}
+              />
+              {labels.showActiveOnly}
+            </label>
+          </div>
 
           {/* Responsive Table for Desktop */}
           <div className="hidden md:block overflow-x-auto bg-white shadow rounded-lg mb-4">
@@ -626,6 +658,7 @@ export default function RentalsPage() {
                   >
                     {lang === "en" ? "Edit" : "Editar"}
                   </th>
+                  <th className="p-2 border">Photo</th>
                   <th className="p-2 border">Bike</th>
                   <th className="p-2 border">User</th>
                   <th className="p-2 border">Start</th>
@@ -666,7 +699,7 @@ export default function RentalsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rentals.map((rental) => (
+                {currentRentals.map((rental) => (
                   <tr key={rental.id} className="hover:bg-gray-100">
                     {/* Edit button on the left */}
                     <td className="border p-2 text-left">
@@ -699,6 +732,25 @@ export default function RentalsPage() {
                           {lang === "en" ? "Edit" : "Editar"}
                         </button>
                       )}
+                    </td>
+                    <td className="border p-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          rental.bikes?.photo_url &&
+                          setLightboxSrc(rental.bikes.photo_url)
+                        }
+                        className="h-14 w-20 overflow-hidden rounded p-0 border-0 bg-transparent cursor-pointer"
+                      >
+                        <Image
+                          src={rental.bikes?.photo_url || "/bikeplaceholder.png"}
+                          alt={rental.bikes?.brand_model || rental.bike_id}
+                          width={80}
+                          height={56}
+                          className="h-full w-full object-cover"
+                          unoptimized
+                        />
+                      </button>
                     </td>
                     <td className="border p-2">
                       {editingRentalId === rental.id ? (
@@ -798,7 +850,21 @@ export default function RentalsPage() {
                 className="bg-white rounded shadow p-4 mb-4 border"
               >
                 {/* Renter's name as card title */}
-                <div className="flex justify-between items-center mb-2">
+                <button
+                type="button"
+                onClick={() => r.bikes?.photo_url && setLightboxSrc(r.bikes.photo_url)}
+                className="mb-3 w-full h-40 overflow-hidden rounded p-0 border-0 bg-transparent cursor-pointer"
+              >
+                <Image
+                  src={r.bikes?.photo_url || "/bikeplaceholder.png"}
+                  alt={r.bikes?.brand_model || r.bike_id}
+                  width={320}
+                  height={160}
+                  className="h-full w-full object-cover"
+                  unoptimized
+                />
+              </button>
+              <div className="flex justify-between items-center mb-2">
                   <span className="font-bold text-lg">
                     {r.users?.name ||
                       (lang === "en" ? "Unknown user" : "Usuario desconocido")}
@@ -849,48 +915,46 @@ export default function RentalsPage() {
                   </div>
                 )}
                 {/* Rental details */}
-                <div className="text-sm mb-2">
-                  <div>
-                    <b>{lang === "en" ? "User:" : "Usuario:"}</b>{" "}
-                    {r.users?.name} ({r.users?.dni})
-                  </div>
+                <div className="text-sm mb-2 space-y-2">
                   <div>
                     <b>{lang === "en" ? "Type:" : "Tipo:"}</b> {r.user_type}
                   </div>
                   <div>
-                    <b>{lang === "en" ? "Start:" : "Inicio:"}</b> {r.start_date}
+                    <b>{lang === "en" ? "Start:" : "Inicio:"}</b> {formatDate(r.start_date, lang)}
                   </div>
-                  <div>
-                    <b>{lang === "en" ? "End:" : "Fin:"}</b> {r.end_date || "-"}
-                  </div>
+                  {r.end_date && (
+                    <div>
+                      <b>{lang === "en" ? "End:" : "Fin:"}</b> {formatDate(r.end_date, lang)}
+                    </div>
+                  )}
                   <div>
                     <b>{lang === "en" ? "Deposit:" : "Depósito:"}</b>{" "}
                     {r.deposit ?? "-"}
                   </div>
+                  {r.status === "Completado" && (
+                    <>
+                      <div>
+                        <b>{lang === "en" ? "Cost:" : "Costo:"}</b>{" "}
+                        {r.total_cost ?? "-"}
+                      </div>
+                      <div>
+                        <b>{lang === "en" ? "Damages:" : "Daños:"}</b>{" "}
+                        {r.damage_cost ?? "-"}
+                      </div>
+                      <div>
+                        <b>{lang === "en" ? "Refund:" : "Reembolso:"}</b>{" "}
+                        {r.deposit_refund ?? "-"}
+                      </div>
+                      <div>
+                        <b>{lang === "en" ? "Staff Check-out:" : "Personal egreso:"}</b>{" "}
+                        {r.closed_by_email ||
+                          (lang === "en" ? "N/A" : "No disponible")}
+                      </div>
+                    </>
+                  )}
                   <div>
-                    <b>{lang === "en" ? "Cost:" : "Costo:"}</b>{" "}
-                    {r.status === "Completado" ? r.total_cost ?? "-" : "-"}
-                  </div>
-                  <div>
-                    <b>{lang === "en" ? "Damages:" : "Daños:"}</b>{" "}
-                    {r.status === "Completado" ? r.damage_cost ?? "-" : "-"}
-                  </div>
-                  <div>
-                    <b>{lang === "en" ? "Refund:" : "Reembolso:"}</b>{" "}
-                    {r.status === "Completado" ? r.deposit_refund ?? "-" : "-"}
-                  </div>
-                  <div>
-                    <b>
-                      {lang === "en" ? "Staff Check-in:" : "Personal ingreso:"}
-                    </b>{" "}
+                    <b>{lang === "en" ? "Staff Check-in:" : "Personal ingreso:"}</b>{" "}
                     {r.created_by_email ||
-                      (lang === "en" ? "N/A" : "No disponible")}
-                  </div>
-                  <div>
-                    <b>
-                      {lang === "en" ? "Staff Check-out:" : "Personal egreso:"}
-                    </b>{" "}
-                    {r.closed_by_email ||
                       (lang === "en" ? "N/A" : "No disponible")}
                   </div>
                   {/* New field for notes */}
@@ -957,6 +1021,28 @@ export default function RentalsPage() {
               {labels.next}
             </button>
           </div>
+
+          {lightboxSrc && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+              onClick={closeLightbox}
+            >
+              <button
+                type="button"
+                className="absolute top-4 right-4 text-white text-2xl"
+                onClick={closeLightbox}
+              >
+                ×
+              </button>
+              <div className="max-w-[95vw] max-h-[95vh] overflow-hidden rounded shadow-lg">
+                <img
+                  src={lightboxSrc}
+                  alt="Bike full screen"
+                  className="max-w-full max-h-[95vh] object-contain"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Layout>
