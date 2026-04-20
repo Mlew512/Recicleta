@@ -62,7 +62,7 @@ export default function HomeStats() {
     charity: lang === "en" ? "Free Bike Rentals" : "Préstamos gratuitos de bicicletas",
     bikes: lang === "en" ? "Bikes Available (Good)" : "Bicicletas Disponibles (Buen Estado)",
     badBikes: lang === "en" ? "Bikes Needing Maintenance" : "Bicicletas que Necesitan Mantenimiento",
-    totalBikes: lang === "en" ? "Total Bikes" : "Total de Bicicletas",
+    totalBikes: lang === "en" ? "registered bikes" : "Bicicletas registradas",
     members: lang === "en" ? "Active Members" : "Miembros Activos",
     loading: lang === "en" ? "Loading..." : "Cargando...",
   };
