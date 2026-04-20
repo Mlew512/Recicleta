@@ -211,7 +211,7 @@ export default function SalesPage() {
                     <th className="p-2 border">{labels.item}</th>
                     <th className="p-2 border">{labels.amount}</th>
                     <th className="p-2 border">{labels.quantity}</th>
-                    {/* <th className="p-2 border">{labels.buyerName}</th> */}
+                    <th className="p-2 border">{labels.buyerName}</th>
                     <th className="p-2 border">{labels.buyerEmail}</th>
                     <th className="p-2 border">{labels.date}</th>
                     <th className="p-2 border">{labels.soldBy}</th>
@@ -225,7 +225,7 @@ export default function SalesPage() {
                       <td className="border p-2">{s.item}</td>
                       <td className="border p-2">{s.amount}</td>
                       <td className="border p-2">{s.quantity}</td>
-                      {/* <td className="border p-2">{s.buyer_name || labels.anon}</td> */}
+                      <td className="border p-2">{s.buyer_name || labels.anon}</td>
                       <td className="border p-2">{s.buyer_email || labels.anon}</td>
                       <td className="border p-2">{s.sale_date}</td>
                       <td className="border p-2">{getUserName(s.created_by_email)}</td>
