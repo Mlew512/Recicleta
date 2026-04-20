@@ -1,0 +1,77 @@
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { useLanguage } from "@/context/LanguageContext";
+
+export default function HomeStats() {
+  const { lang } = useLanguage();
+  const [stats, setStats] = useState({
+    charityRentals: 0,
+    availableGoodBikes: 0,
+    activeMembers: 0,
+    loading: true,
+  });
+
+  useEffect(() => {
+    let mounted = true;
+    async function fetchStats() {
+      // Charity rentals
+      const { count: charityRentals } = await supabase
+        .from("rentals")
+        .select("id", { count: "exact" })
+        .eq("user_type", "charity");
+      // Bikes available in good condition
+      const { count: availableGoodBikes } = await supabase
+        .from("bikes")
+        .select("id", { count: "exact" })
+        .eq("status", "Disponible")
+        .eq("condition", "Good");
+      // Active members
+      // Only count members whose end_date is after today
+      const today = new Date().toISOString().split("T")[0];
+      const { count: activeMembers } = await supabase
+        .from("memberships")
+        .select("id", { count: "exact" })
+        .gt("end_date", today);
+      if (mounted) {
+        setStats({
+          charityRentals: charityRentals ?? 0,
+          availableGoodBikes: availableGoodBikes ?? 0,
+          activeMembers: activeMembers ?? 0,
+          loading: false,
+        });
+      }
+    }
+    fetchStats();
+    return () => { mounted = false; };
+  }, []);
+
+  const labels = {
+    charity: lang === "en" ? "Free Bike Rentals (Charity)" : "Alquileres Gratuitos (Caridad)",
+    bikes: lang === "en" ? "Bikes Available (Good)" : "Bicicletas Disponibles (Buen Estado)",
+    members: lang === "en" ? "Active Members" : "Miembros Activos",
+    loading: lang === "en" ? "Loading..." : "Cargando...",
+  };
+
+  return (
+    <div className="flex flex-col md:flex-row gap-4 mb-6">
+      <div className="flex-1 bg-gray-100 rounded p-4 text-center">
+        <div className="text-2xl font-bold text-green-700">
+          {stats.loading ? labels.loading : stats.charityRentals}
+        </div>
+        <div className="text-sm text-gray-700 mt-1">{labels.charity}</div>
+      </div>
+      <div className="flex-1 bg-gray-100 rounded p-4 text-center">
+        <div className="text-2xl font-bold text-green-700">
+          {stats.loading ? labels.loading : stats.availableGoodBikes}
+        </div>
+        <div className="text-sm text-gray-700 mt-1">{labels.bikes}</div>
+      </div>
+      <div className="flex-1 bg-gray-100 rounded p-4 text-center">
+        <div className="text-2xl font-bold text-green-700">
+          {stats.loading ? labels.loading : stats.activeMembers}
+        </div>
+        <div className="text-sm text-gray-700 mt-1">{labels.members}</div>
+      </div>
+    </div>
+  );
+}

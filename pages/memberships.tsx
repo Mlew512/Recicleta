@@ -53,7 +53,7 @@ export default function MembershipsPage() {
     dni: "DNI",
     email: "Email",
     start: lang === "en" ? "Start Date" : "Fecha Inicio",
-    end: lang === "en" ? "End Date" : "Fecha Fin",
+    end: lang === "en" ? "Expiration" : "Vencimiento",
     cost: lang === "en" ? "Cost (€)" : "Costo (€)",
     loading: lang === "en" ? "Loading..." : "Cargando...",
     noMembers: lang === "en" ? "No memberships found." : "No se encontraron membresías.",
@@ -175,7 +175,6 @@ export default function MembershipsPage() {
                   <th className="p-2 border">{labels.name}</th>
                   <th className="p-2 border">{labels.dni}</th>
                   <th className="p-2 border">{labels.email}</th>
-                  <th className="p-2 border">{labels.start}</th>
                   <th className="p-2 border">{labels.end}</th>
                   <th className="p-2 border">{labels.cost}</th>
                 </tr>
@@ -186,7 +185,6 @@ export default function MembershipsPage() {
                     <td className="border p-2">{m.name}</td>
                     <td className="border p-2">{m.dni}</td>
                     <td className="border p-2">{m.email}</td>
-                    <td className="border p-2">{m.start_date}</td>
                     <td className="border p-2">{m.end_date}</td>
                     <td className="border p-2">{m.cost}</td>
                   </tr>

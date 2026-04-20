@@ -846,10 +846,22 @@ export default function BikesPage() {
                           : "text-orange-600"
                       }`}
                     >
-                      {bike.status}
+                      {bike.status === "Disponible"
+                        ? lang === "en"
+                          ? "Available"
+                          : "Disponible"
+                        : lang === "en"
+                          ? "In Use"
+                          : "En uso"}
                     </p>
                     <p className="text-sm text-gray-600 mb-2">
-                      {bike.condition}
+                      {bike.condition === "Good"
+                        ? lang === "en"
+                          ? "Condition: Good"
+                          : "Condición: Buena"
+                        : lang === "en"
+                          ? "Condition: Needs Maintenance"
+                          : "Condición: Necesita Mantenimiento"}
                     </p>
                     {/* Latest note preview */}
                     {latestNoteByBike[bike.id]?.note ? (
