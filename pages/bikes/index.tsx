@@ -900,7 +900,7 @@ export default function BikesPage() {
             <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
               <div
                 key={editingBike.id}
-                className="bg-white rounded-lg p-6 w-full max-w-md"
+                className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
               >
                 <h2 className="text-xl font-semibold mb-4">
                   {lang === "en" ? "Edit Bike" : "Editar Bicicleta"}
