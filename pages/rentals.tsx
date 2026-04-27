@@ -80,15 +80,12 @@ const bikeTypeLabels: Record<string, { en: string; es: string }> = {
 
 export default function RentalsPage() {
   const router = useRouter();
-  const selectedBikeFromQuery = router.query.bike as string;
   const { lang, toggleLang } = useLanguage();
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [bikes, setBikes] = useState<Bike[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [selectedBike, setSelectedBike] = useState<string>(
-    selectedBikeFromQuery || ""
-  );
+  const [selectedBike, setSelectedBike] = useState<number | null>(null);
   const [selectedUser, setSelectedUser] = useState<string>("");
   const [rentalType, setRentalType] = useState<RentalType>("");
   const [search, setSearch] = useState("");
@@ -104,6 +101,12 @@ export default function RentalsPage() {
   const [editNotes, setEditNotes] = useState<string>("");
   const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (router.query.bike) {
+      setSelectedBike(parseInt(router.query.bike as string));
+    }
+  }, [router.query.bike]);
 
   useEffect(() => {
     setPage(1);
@@ -171,6 +174,12 @@ export default function RentalsPage() {
       return;
     }
 
+    const bike = bikes.find((b) => b.id === selectedBike);
+    if (!bike) {
+      setMessage("Bike not found.");
+      return;
+    }
+
     // Get current user email
     const {
       data: { user },
@@ -183,7 +192,7 @@ export default function RentalsPage() {
     const { error } = await supabase.from("rentals").insert([
       {
         transaction_id: `T${Date.now()}`,
-        bike_id: selectedBike,
+        bike_id: bike.id,
         user_id: selectedUser || null,
         start_date: new Date().toISOString().split("T")[0],
         status: "Activo",
@@ -204,13 +213,13 @@ export default function RentalsPage() {
     await supabase
       .from("bikes")
       .update({ status: "En uso" })
-      .eq("id", selectedBike);
+      .eq("id", bike.id);
 
     setMessage("Rental started successfully!");
 
     await loadData();
 
-    setSelectedBike("");
+    setSelectedBike(null);
     setSelectedUser("");
     setRentalType("");
     setNotes("");
@@ -291,7 +300,7 @@ export default function RentalsPage() {
     await supabase
       .from("bikes")
       .update({ status: "Disponible" })
-      .eq("id", rental.bike_id);
+      .eq("id", parseInt(rental.bikes?.id || "0"));
 
     setMessage(
       `Rental closed. ${
@@ -334,7 +343,7 @@ export default function RentalsPage() {
         await supabase
           .from("bikes")
           .update({ status: "Disponible" })
-          .eq("id", rental.bike_id);
+          .eq("id", parseInt(rental.bikes?.id || "0"));
       }
     }
 
@@ -527,7 +536,7 @@ export default function RentalsPage() {
                   }
                   onChange={(e) => {
                     setBikeSearch(e.target.value);
-                    setSelectedBike("");
+                    setSelectedBike(null);
                   }}
                   className="border px-3 py-2 w-full rounded"
                   autoComplete="off"

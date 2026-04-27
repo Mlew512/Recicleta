@@ -20,7 +20,7 @@ const fetcher = async () => {
 
 // Update the Bike interface to include an index signature
 interface Bike {
-  id: number;                 // <-- add
+  id: number;                 // <-- change to number
   bike_id: string;
   type: string;
   brand_model: string;
