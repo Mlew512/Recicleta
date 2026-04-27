@@ -45,6 +45,7 @@ type Rental = {
 };
 
 type Bike = Database["public"]["Tables"]["bikes"]["Row"];
+type BikeId = Bike["id"];
 type User = Database["public"]["Tables"]["users"]["Row"];
 type RentalType = "adult" | "child" | "charity" | "";
 
@@ -80,14 +81,16 @@ const bikeTypeLabels: Record<string, { en: string; es: string }> = {
 
 export default function RentalsPage() {
   const router = useRouter();
-  const selectedBikeFromQuery = router.query.bike as string;
+  const selectedBikeFromQuery = Array.isArray(router.query.bike)
+    ? router.query.bike[0]
+    : router.query.bike;
   const { lang, toggleLang } = useLanguage();
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [bikes, setBikes] = useState<Bike[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [selectedBike, setSelectedBike] = useState<string>(
-    selectedBikeFromQuery || ""
+  const [selectedBike, setSelectedBike] = useState<BikeId | "">(
+    (selectedBikeFromQuery as BikeId) || ""
   );
   const [selectedUser, setSelectedUser] = useState<string>("");
   const [rentalType, setRentalType] = useState<RentalType>("");
@@ -96,6 +99,12 @@ export default function RentalsPage() {
   const [userSearch, setUserSearch] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [notes, setNotes] = useState(""); // Add this state for notes
+
+  useEffect(() => {
+    if (selectedBikeFromQuery) {
+      setSelectedBike(selectedBikeFromQuery as BikeId);
+    }
+  }, [selectedBikeFromQuery]);
 
   const [page, setPage] = useState(1);
   const rentalsPerPage = 10;
@@ -520,9 +529,9 @@ export default function RentalsPage() {
                   placeholder={labels.searchBike}
                   value={
                     selectedBike
-                      ? bikes.find((b) => b.id === selectedBike)?.bike_id +
+                      ? bikes.find((b) => String(b.id) === String(selectedBike))?.bike_id +
                         " – " +
-                        bikes.find((b) => b.id === selectedBike)?.brand_model
+                        bikes.find((b) => String(b.id) === String(selectedBike))?.brand_model
                       : bikeSearch
                   }
                   onChange={(e) => {
