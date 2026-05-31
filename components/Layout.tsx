@@ -30,6 +30,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: "/rentals", label: lang === "en" ? "Rentals" : "Alquileres" },
     { href: "/memberships", label: lang === "en" ? "Membership" : "Membresía" },
     { href: "/sales", label: lang === "en" ? "Sales" : "Ventas" },
+    { href: "/costs", label: lang === "en" ? "Costs" : "Costos" },
+    { href: "/visit-sheet", label: lang === "en" ? "Visit Sheet" : "Registro de visitas" },
   ];
 
   return (
