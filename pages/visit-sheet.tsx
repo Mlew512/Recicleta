@@ -42,7 +42,7 @@ export default function VisitSheetPage() {
       const start = `${year}-01-01`
       const end = `${year + 1}-01-01`
       const { data, error: fetchError } = await supabase
-        .from<VisitRecord>('visits')
+        .from('visits')
         .select('id, first_name, email, first_time, reason, created_at')
         .gte('created_at', start)
         .lt('created_at', end)
