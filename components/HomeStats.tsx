@@ -11,6 +11,7 @@ export default function HomeStats() {
     totalBadBikes: 0,
     totalBikes: 0,
     activeMembers: 0,
+    activeRentals: 0,
     loading: true,
   });
 
@@ -43,6 +44,11 @@ export default function HomeStats() {
         .from("memberships")
         .select("id", { count: "exact" })
         .gt("end_date", today);
+      // Active rentals
+      const { count: activeRentals } = await supabase
+        .from("rentals")
+        .select("id", { count: "exact" })
+        .eq("status", "Activo");
       if (mounted) {
         setStats({
           charityRentals: charityRentals ?? 0,
@@ -50,6 +56,7 @@ export default function HomeStats() {
           totalBadBikes: totalBadBikes ?? 0,
           totalBikes: totalBikes ?? 0,
           activeMembers: activeMembers ?? 0,
+          activeRentals: activeRentals ?? 0,
           loading: false,
         });
       }
@@ -99,6 +106,12 @@ export default function HomeStats() {
           {stats.loading ? labels.loading : stats.activeMembers}
         </div>
         <div className="text-sm text-gray-700 mt-1">{labels.members}</div>
+      </div>
+      <div className="flex-1 bg-gray-100 rounded p-4 text-center">
+        <div className="text-2xl font-bold text-green-700">
+          {stats.loading ? labels.loading : stats.activeRentals}
+        </div>
+        <div className="text-sm text-gray-700 mt-1">{lang === "en" ? "Active Rentals" : "Alquileres activos"}</div>
       </div>
     </div>
   );

@@ -60,6 +60,55 @@ const fetchStatsAndRevenue = async () => {
       });
     }
 
+    // Costs
+    const { data: costs, error: costsError } = await supabase
+      .from("costs")
+      .select("amount");
+    if (costsError) throw costsError;
+    let costsSum = 0;
+    if (costs && Array.isArray(costs)) {
+      costsSum = costs.reduce((sum, c) => sum + Number(c.amount || 0), 0);
+    }
+
+    // Active rentals deposit and profit calculations
+    const { data: activeRentals, error: activeRentalsError } = await supabase
+      .from("rentals")
+      .select("deposit, user_type, start_date, bikes(type)")
+      .eq("status", "Activo");
+    if (activeRentalsError) throw activeRentalsError;
+    let activeDepositRefunds = 0;
+    let activeRentalProfit = 0;
+    if (activeRentals && Array.isArray(activeRentals)) {
+      activeRentals.forEach((r) => {
+        const deposit = Number(r.deposit || 0);
+        const start = r.start_date ? new Date(r.start_date) : new Date();
+        const now = new Date();
+        const msPerDay = 1000 * 60 * 60 * 24;
+        const days = Math.max(
+          1,
+          Math.ceil((now.getTime() - start.getTime()) / msPerDay)
+        );
+        const periods = Math.max(1, Math.ceil(days / 90));
+        const bikeType = Array.isArray(r.bikes)
+          ? (r.bikes[0] as { type?: string } | undefined)?.type
+          : (r.bikes as { type?: string } | undefined)?.type;
+        const isChildRental =
+          r.user_type === "child" ||
+          bikeType?.toLowerCase() === "childrens";
+        let totalCost = 0;
+        if (r.user_type === "charity") {
+          totalCost = 0;
+        } else if (isChildRental) {
+          totalCost = periods * 5;
+        } else {
+          totalCost = periods * 10;
+        }
+        const expectedRefund = Math.max(deposit - totalCost, 0);
+        activeDepositRefunds += expectedRefund;
+        activeRentalProfit += deposit - expectedRefund;
+      });
+    }
+
     // Available bikes counter
     const { data: bikes, error: bikesError } = await supabase
       .from("bikes")
@@ -77,7 +126,11 @@ const fetchStatsAndRevenue = async () => {
       membershipRevenue: membershipSum,
       salesRevenue: salesSum,
       donationRevenue: donationSum,
+      costs: costsSum,
+      activeDepositRefunds,
+      activeRentalProfit,
       totalRevenue: rentalSum + membershipSum + salesSum + donationSum,
+      netRevenue: rentalSum + membershipSum + salesSum + donationSum - costsSum,
       availableBikesCount,
       activeRentalsCount,
     };
@@ -88,7 +141,11 @@ const fetchStatsAndRevenue = async () => {
       membershipRevenue: 0,
       salesRevenue: 0,
       donationRevenue: 0,
+      costs: 0,
+      activeDepositRefunds: 0,
+      activeRentalProfit: 0,
       totalRevenue: 0,
+      netRevenue: 0,
       availableBikesCount: 0,
       activeRentalsCount: 0,
     };
@@ -117,16 +174,20 @@ export default function HomePage() {
   );
 
   const labels = {
-    revenue: lang === "en" ? "Total Revenue" : "Ingresos Totales",
-    rentals: lang === "en" ? "Rentals" : "Alquileres",
+      revenue: lang === "en" ? "Gross Revenue" : "Ingresos brutos",
+    rentals: lang === "en" ? "Completed Rentals" : "Alquileres completados",
     memberships: lang === "en" ? "Memberships" : "Membresías",
     sales: lang === "en" ? "Sales" : "Ventas",
+    depositRefunds: lang === "en" ? "Deposit Refunds Owed" : "Depósitos a devolver",
+    rentalProfit: lang === "en" ? "Active Rental Profit" : "Ganancia de alquileres activos",
     donations: lang === "en" ? "Donations" : "Donaciones",
     loading: lang === "en" ? "Loading..." : "Cargando...",
     euro: "€",
     info: lang === "en"
-      ? "Sales can include t-shirts, sweaters, bells, etc."
-      : "Las ventas pueden incluir camisetas, suéteres, timbres, etc.",
+      ? "This dashboard shows gross revenue before costs. For net revenue, subtract costs from the total."
+      : "Este panel muestra los ingresos brutos antes de costos. Para ingresos netos, reste los costos del total.",
+    costs: lang === "en" ? "Costs" : "Costos",
+    netRevenue: lang === "en" ? "Net Revenue" : "Ingresos netos",
     availableBikes: lang === "en" ? "Available Bikes" : "Bicicletas Disponibles",
     activeRentals: lang === "en" ? "Active Rentals" : "Alquileres Activos",
   };
@@ -162,7 +223,25 @@ export default function HomePage() {
                   <span className="font-semibold">{labels.donations}</span>
                   <span>{data?.donationRevenue} {labels.euro}</span>
                 </div>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="font-semibold">{labels.depositRefunds}</span>
+                  <span>-{data?.activeDepositRefunds} {labels.euro}</span>
+                </div>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="font-semibold">{labels.rentalProfit}</span>
+                  <span>{data?.activeRentalProfit} {labels.euro}</span>
+                </div>
+                <div className="flex justify-between items-center border-b pb-2">
+                  <span className="font-semibold">{labels.costs}</span>
+                  <span>-{data?.costs} {labels.euro}</span>
+                </div>
                 <div className="flex justify-between items-center pt-4 text-lg font-bold">
+                  <span>{labels.netRevenue}</span>
+                  <span>
+                    {data?.netRevenue} {labels.euro}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-sm text-gray-500">
                   <span>{labels.revenue}</span>
                   <span>
                     {data?.totalRevenue} {labels.euro}
